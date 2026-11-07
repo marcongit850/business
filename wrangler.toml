@@ -1,0 +1,26 @@
+# Preview only. Worker name stays business-preview.
+# Do not add a route, a custom domain, or a production environment.
+"$schema" = "node_modules/wrangler/config-schema.json"
+name = "business-preview"
+main = "src/index.js"
+compatibility_date = "2026-11-07"
+compatibility_flags = [ "nodejs_compat" ]
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
