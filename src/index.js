@@ -412,7 +412,14 @@ function page(heading, body, mainClass = "missing") {
           <button class="button" type="button" popovertarget="contact-dialog">Contact</button>
         </div>
         <div class="footer-bottom">
-          <span>Walton County Business Leaders · Walton County, Florida</span>
+          <span class="footer-meta">
+            <span>Walton County Business Leaders · Walton County, Florida</span>
+            <a class="facebook-link" href="https://www.facebook.com/groups/waltonbusinessleaders/" target="_blank" rel="noopener noreferrer" aria-label="Walton County Business Leaders Facebook group">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M13.2 22v-8.3h2.7l.4-3.1h-3.1V8.7c0-.9.3-1.5 1.6-1.5h1.7V4.2h-2.6c-2.6 0-4.3 1.6-4.3 4.5v2h-2.1v3.1h2.1V22h3.6z"/>
+              </svg>
+            </a>
+          </span>
         </div>
       </div>
     </footer>

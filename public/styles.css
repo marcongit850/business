@@ -665,6 +665,24 @@ h1 {
   letter-spacing: 0.4px;
 }
 
+.footer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.facebook-link {
+  display: inline-flex;
+  flex: none;
+  color: var(--gold);
+  line-height: 0;
+}
+
+.facebook-link:hover {
+  color: #deba68;
+}
+
 #about,
 #issues,
 #join {
