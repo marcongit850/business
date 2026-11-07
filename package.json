@@ -1,0 +1,13 @@
+{
+  "name": "business-preview",
+  "private": true,
+  "description": "Preview homepage for Walton County Business Leaders.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  }
+}
