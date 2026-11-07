@@ -46,6 +46,11 @@ a {
   text-decoration: none;
 }
 
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
 p,
 h1,
 h2,
@@ -398,11 +403,6 @@ h1 {
   max-width: 410px;
 }
 
-.placeholder-note {
-  font-size: 13px;
-  margin-top: 22px;
-}
-
 .join {
   background: var(--navy);
   color: var(--cream);
@@ -455,22 +455,77 @@ h1 {
   padding: 35px 0 22px;
 }
 
-.footer-top {
-  display: block;
-  padding-bottom: 26px;
-}
-
 .closing {
   font-size: 29px;
   line-height: 1.2;
   max-width: 520px;
 }
 
-.independence {
-  max-width: 440px;
-  font-size: 15px;
+.contact {
+  margin: 48px 0 40px;
+}
+
+.contact-intro h2 {
+  font-size: 36px;
+  line-height: 1.1;
+}
+
+.contact-intro p {
+  margin-top: 14px;
+  max-width: 380px;
+  font-size: 17px;
   line-height: 1.55;
-  margin-top: 24px;
+}
+
+.contact-form {
+  display: grid;
+  gap: 20px;
+  margin-top: 32px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 14px 16px;
+  border-radius: 0;
+}
+
+.contact-form textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.contact-form input:focus-visible,
+.contact-form textarea:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-color: var(--gold);
+}
+
+.contact-form .button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.form-error {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .footer-bottom {
@@ -481,15 +536,10 @@ h1 {
   letter-spacing: 0.4px;
 }
 
-.mockup-note {
-  opacity: 0.8;
-  margin-top: 8px;
-}
-
 #about,
 #issues,
 #join,
-#preview-note {
+#contact {
   scroll-margin-top: 16px;
 }
 
@@ -750,18 +800,29 @@ a:focus-visible,
     padding: 49px 0 25px;
   }
 
-  .footer-top {
-    display: flex;
-    justify-content: space-between;
-    gap: 100px;
-    padding-bottom: 35px;
-  }
-
   .closing {
     font-size: 30px;
   }
 
-  .independence {
+  .contact {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 80px;
+    margin: 72px 0 56px;
+  }
+
+  .contact-intro {
+    width: 38%;
+    padding-top: 6px;
+  }
+
+  .contact-intro h2 {
+    font-size: 44px;
+  }
+
+  .contact .contact-form {
+    width: 52%;
     margin-top: 0;
   }
 
@@ -769,10 +830,6 @@ a:focus-visible,
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-  }
-
-  .mockup-note {
-    margin-top: 0;
   }
 
   .missing {
@@ -814,7 +871,7 @@ a:focus-visible,
 
   .purpose-inner,
   .join-inner,
-  .footer-top {
+  .contact {
     gap: 40px;
   }
 }

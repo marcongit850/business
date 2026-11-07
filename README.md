@@ -2,7 +2,7 @@
 
 Preview homepage for Walton County Business Leaders, an independent professional membership organization for owners, entrepreneurs, and executives in Walton County, Florida.
 
-This repository is a design preview. It is not a production site. Membership applications are not open, and the page does not collect information.
+This repository is a homepage preview. It is not a production site. Membership is described on the page, and there is no join account or member directory.
 
 ## Preview locally
 
@@ -25,8 +25,8 @@ Expected preview URL: https://business-preview.352marc.workers.dev
 
 ## What this preview includes
 
-The homepage has a header, hero, purpose statement, the eight advocacy priorities, two illustrative issue cards, a free-membership band, and a footer. Wording is taken from the November 6, 2026 brief. The issue cards are layout samples, not official positions.
+The homepage has a header, hero, purpose statement, the eight advocacy priorities, two featured issue cards, a free-membership band, and a footer with a contact form. Wording for the organization is taken from the November 6, 2026 brief.
 
-About, Issues, News, Calendar, and Join stay on this page. Join scrolls to the membership band. There is no application form, account, directory, newsroom, calendar, or admin.
+About, Issues, News, Calendar, and Join stay on this page. Join scrolls to the membership band. The contact form posts to `/contact`, which checks the name, email, and message and then shows a thank-you page. It does not send email. There is no membership account, directory, newsroom, calendar, or admin.
 
 Cormorant Garamond and Source Sans 3 are included under the SIL Open Font License. See `public/fonts/OFL.txt`.

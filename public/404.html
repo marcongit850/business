@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Page not found | Walton County Business Leaders</title>
-    <meta name="description" content="This design preview only includes the homepage.">
+    <meta name="description" content="The page you requested is not available.">
     <meta name="robots" content="noindex, nofollow">
     <meta name="theme-color" content="#f6f3ec">
     <link rel="icon" href="/favicon.png" type="image/png">
@@ -22,29 +22,46 @@
         <nav class="nav" aria-label="Main">
           <a href="/#about">About</a>
           <a href="/#issues">Issues</a>
-          <a href="/#preview-note">News</a>
-          <a href="/#preview-note">Calendar</a>
+          <a href="/#home">News</a>
+          <a href="/#home">Calendar</a>
           <a class="button" href="/#join">Join the mission</a>
         </nav>
       </div>
     </header>
     <main id="content">
       <div class="container missing">
-        <p class="eyebrow">Preview</p>
+        <p class="eyebrow">Walton County</p>
         <h1>Page not found</h1>
-        <p>This design preview only includes the homepage.</p>
+        <p>The page you requested is not available.</p>
         <a class="button" href="/">Back to the homepage</a>
       </div>
     </main>
     <footer class="footer">
       <div class="container">
-        <div class="footer-top">
-          <p class="closing">A Stronger Voice. A Stronger Business Community. A Stronger Walton County.</p>
-          <p class="independence">We are independent of county government, political parties, and other business organizations.</p>
-        </div>
+        <p class="closing">A Stronger Voice. A Stronger Business Community. A Stronger Walton County.</p>
+        <section class="contact" aria-labelledby="contact-heading">
+          <div class="contact-intro">
+            <h2 id="contact-heading">Contact us</h2>
+            <p>Have a question or want to learn more? Send us a message.</p>
+          </div>
+          <form class="contact-form" action="/contact" method="post">
+            <div class="field">
+              <label for="name">Name</label>
+              <input id="name" name="name" type="text" required autocomplete="name" maxlength="120">
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" required autocomplete="email" maxlength="200">
+            </div>
+            <div class="field">
+              <label for="message">Message</label>
+              <textarea id="message" name="message" required rows="6" maxlength="5000"></textarea>
+            </div>
+            <button class="button" type="submit">Send message</button>
+          </form>
+        </section>
         <div class="footer-bottom">
           <span>Walton County Business Leaders · Walton County, Florida</span>
-          <span class="mockup-note">Design preview only. Applications are not yet open.</span>
         </div>
       </div>
     </footer>
