@@ -455,31 +455,102 @@ h1 {
   padding: 35px 0 22px;
 }
 
+.footer-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 28px;
+  padding-bottom: 28px;
+}
+
 .closing {
   font-size: 29px;
   line-height: 1.2;
   max-width: 520px;
 }
 
-.contact {
-  margin: 48px 0 40px;
+.contact-popover {
+  border: 0;
+  padding: 32px 28px 28px;
+  margin: auto;
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--cream);
+  color: var(--navy);
+  border-top: 2px solid var(--gold);
 }
 
-.contact-intro h2 {
+.contact-popover::backdrop {
+  background: rgba(0, 24, 64, 0.55);
+}
+
+.popover-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.popover-toolbar h2 {
   font-size: 36px;
   line-height: 1.1;
 }
 
-.contact-intro p {
-  margin-top: 14px;
-  max-width: 380px;
+.contact-popover > p {
+  margin-top: 12px;
   font-size: 17px;
   line-height: 1.55;
+  max-width: 42ch;
+}
+
+.contact-close {
+  flex: none;
+  margin-top: 8px;
+  padding: 0 0 3px;
+  border: 0;
+  border-bottom: 1px solid #a4acb4;
+  background: transparent;
+  color: var(--navy);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .contact-form {
   display: grid;
   gap: 20px;
+  margin-top: 24px;
+  width: 100%;
+}
+
+.apply {
+  padding: 48px 0 72px;
+  max-width: 760px;
+}
+
+.apply h1 {
+  font-size: 40px;
+  letter-spacing: -0.4px;
+  margin: 14px 0 0;
+}
+
+.apply-lead,
+.apply-note {
+  max-width: 640px;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.apply-lead {
+  margin-top: 18px;
+}
+
+.apply-note {
+  margin-top: 12px;
+}
+
+.apply .contact-form {
+  max-width: 640px;
   margin-top: 32px;
 }
 
@@ -490,6 +561,20 @@ h1 {
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;
+}
+
+.optional,
+.field-hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 14px;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .contact-form input,
@@ -538,8 +623,7 @@ h1 {
 
 #about,
 #issues,
-#join,
-#contact {
+#join {
   scroll-margin-top: 16px;
 }
 
@@ -800,30 +884,24 @@ a:focus-visible,
     padding: 49px 0 25px;
   }
 
+  .footer-top {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 48px;
+    padding-bottom: 36px;
+  }
+
   .closing {
     font-size: 30px;
   }
 
-  .contact {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 80px;
-    margin: 72px 0 56px;
+  .apply {
+    padding: 72px 0 96px;
   }
 
-  .contact-intro {
-    width: 38%;
-    padding-top: 6px;
-  }
-
-  .contact-intro h2 {
-    font-size: 44px;
-  }
-
-  .contact .contact-form {
-    width: 52%;
-    margin-top: 0;
+  .apply h1 {
+    font-size: 56px;
   }
 
   .footer-bottom {
@@ -871,7 +949,7 @@ a:focus-visible,
 
   .purpose-inner,
   .join-inner,
-  .contact {
+  .footer-top {
     gap: 40px;
   }
 }

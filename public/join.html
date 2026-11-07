@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Join | Walton County Business Leaders</title>
+    <meta name="description" content="Membership is free. Applications require administrator approval.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#f6f3ec">
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/" aria-label="Walton County Business Leaders home">
+          <img src="/walton-county-business-leaders-logo.png" alt="" width="49" height="49">
+          <div class="brand-name"><span>Walton County</span>Business Leaders</div>
+        </a>
+        <nav class="nav" aria-label="Main">
+          <a href="/#about">About</a>
+          <a href="/#issues">Issues</a>
+          <a href="/#home">News</a>
+          <a href="/#home">Calendar</a>
+          <a class="button" href="/join">Join the mission</a>
+        </nav>
+      </div>
+    </header>
+    <main id="content">
+      <div class="container apply">
+        <p class="eyebrow">Membership</p>
+        <h1>Join Walton County Business Leaders</h1>
+        <p class="apply-lead">Membership is free. Applications require administrator approval.</p>
+        <p class="apply-note">Membership is limited to individuals who own, operate, or hold executive leadership positions in businesses operating in or serving Walton County, Florida.</p>
+        <form class="contact-form" action="/join" method="post">
+          <div class="field">
+            <label for="full-name">Full name</label>
+            <input id="full-name" name="full_name" type="text" required autocomplete="name" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="join-email">Email</label>
+            <input id="join-email" name="email" type="email" required autocomplete="email" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input id="phone" name="phone" type="tel" required autocomplete="tel" maxlength="40">
+          </div>
+          <div class="field">
+            <label for="company">Business or company</label>
+            <input id="company" name="company" type="text" required autocomplete="organization" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="role">Your role at that company</label>
+            <input id="role" name="role" type="text" required autocomplete="organization-title" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="industry">Industry or type of work</label>
+            <input id="industry" name="industry" type="text" required maxlength="200">
+          </div>
+          <div class="field">
+            <label for="time-in-county">How long have you been in Walton County</label>
+            <input id="time-in-county" name="time_in_county" type="text" required maxlength="200">
+          </div>
+          <div class="field">
+            <label for="website">Business website <span class="optional">(optional)</span></label>
+            <input id="website" name="website" type="text" inputmode="url" autocomplete="url" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="note">A short note <span class="optional">(optional)</span></label>
+            <textarea id="note" name="note" rows="5" maxlength="2000"></textarea>
+            <span class="field-hint">Who you are, or why you want to join.</span>
+          </div>
+          <button class="button" type="submit">Submit application</button>
+        </form>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-top">
+          <p class="closing">A Stronger Voice. A Stronger Business Community. A Stronger Walton County.</p>
+          <button class="button" type="button" popovertarget="contact-dialog">Contact</button>
+        </div>
+        <div class="footer-bottom">
+          <span>Walton County Business Leaders · Walton County, Florida</span>
+        </div>
+      </div>
+    </footer>
+    <div id="contact-dialog" class="contact-popover" popover aria-labelledby="contact-heading">
+      <div class="popover-toolbar">
+        <h2 id="contact-heading">Contact us</h2>
+        <button class="contact-close" type="button" popovertarget="contact-dialog" popovertargetaction="hide">Close</button>
+      </div>
+      <p>Have a question or want to learn more? Send us a message.</p>
+      <form class="contact-form" action="/contact" method="post">
+        <div class="field">
+          <label for="contact-name">Name</label>
+          <input id="contact-name" name="name" type="text" required autocomplete="name" maxlength="120">
+        </div>
+        <div class="field">
+          <label for="contact-email">Email</label>
+          <input id="contact-email" name="email" type="email" required autocomplete="email" maxlength="200">
+        </div>
+        <div class="field">
+          <label for="contact-message">Message</label>
+          <textarea id="contact-message" name="message" required rows="6" maxlength="5000"></textarea>
+        </div>
+        <button class="button" type="submit">Send message</button>
+      </form>
+    </div>
+  </body>
+</html>

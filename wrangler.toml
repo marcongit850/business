@@ -24,3 +24,8 @@ head_sampling_rate = 1
 [observability.traces]
 enabled = true
 head_sampling_rate = 1
+
+# Sends only to this verified destination. Does not change DNS or Email Routing.
+[[send_email]]
+name = "EMAIL"
+destination_address = "marc@whpinc.com"
