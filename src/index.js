@@ -34,6 +34,10 @@ export default {
       return handleJoin(request, env);
     }
 
+    if (request.method === "POST" && url.pathname === "/login") {
+      return handleLogin(request);
+    }
+
     if (request.method !== "GET" && request.method !== "HEAD") {
       return textResponse("Use the form on this site.", 405);
     }
@@ -159,6 +163,53 @@ async function handleJoin(request, env) {
     ),
     200,
   );
+}
+
+async function handleLogin(request) {
+  const form = await readForm(request);
+  if (!form) {
+    return htmlResponse(page("Sign in", loginFields(""), "sign-in"), 400);
+  }
+
+  const email = fieldValue(form.get("email"));
+  const password = fieldValue(form.get("password"));
+  if (!email || !password) {
+    return htmlResponse(
+      page(
+        "Sign in",
+        `<p class="form-error">Please enter your email and password.</p>${loginFields(email)}`,
+        "sign-in",
+      ),
+      400,
+    );
+  }
+
+  console.log(JSON.stringify({ message: "login submitted" }));
+  return htmlResponse(
+    page(
+      "Sign in",
+      `<p class="sign-in-result">No approved member account matches that email yet.</p>
+      <p class="sign-in-join"><a href="/join">Request membership</a></p>`,
+      "sign-in",
+    ),
+    200,
+  );
+}
+
+function loginFields(email) {
+  return `<p class="apply-lead">Members can sign in after their application is approved.</p>
+    <form class="contact-form" action="/login" method="post">
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" name="email" type="email" required autocomplete="username" maxlength="200" value="${escapeHtml(email)}">
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="200">
+      </div>
+      <button class="button" type="submit">Sign in</button>
+    </form>
+    <p class="sign-in-join"><a href="/join">Request membership</a></p>`;
 }
 
 async function readForm(request) {
@@ -339,13 +390,16 @@ function page(heading, body, mainClass = "missing") {
           <a href="/#issues">Issues</a>
           <a href="/#home">News</a>
           <a href="/#home">Calendar</a>
-          <a class="button" href="/join">Join the mission</a>
+          <span class="nav-actions">
+            <a class="nav-login" href="/login">Login</a>
+            <a class="button" href="/join">Join the mission</a>
+          </span>
         </nav>
       </div>
     </header>
     <main id="content">
       <div class="container ${mainClass}">
-        <p class="eyebrow">${mainClass === "apply" || heading.includes("application") ? "Membership" : "Contact"}</p>
+        <p class="eyebrow">${mainClass === "sign-in" ? "Members" : mainClass === "apply" || heading.includes("application") ? "Membership" : "Contact"}</p>
         <h1>${escapeHtml(heading)}</h1>
         ${body}
         <a class="button" href="/">Back to the homepage</a>

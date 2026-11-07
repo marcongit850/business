@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in | Walton County Business Leaders</title>
+    <meta name="description" content="Members can sign in after their application is approved.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#f6f3ec">
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/" aria-label="Walton County Business Leaders home">
+          <img src="/walton-county-business-leaders-logo.png" alt="" width="49" height="49">
+          <div class="brand-name"><span>Walton County</span>Business Leaders</div>
+        </a>
+        <nav class="nav" aria-label="Main">
+          <a href="/#about">About</a>
+          <a href="/#issues">Issues</a>
+          <a href="/#home">News</a>
+          <a href="/#home">Calendar</a>
+          <span class="nav-actions">
+            <a class="nav-login" href="/login">Login</a>
+            <a class="button" href="/join">Join the mission</a>
+          </span>
+        </nav>
+      </div>
+    </header>
+    <main id="content">
+      <div class="container sign-in">
+        <p class="eyebrow">Members</p>
+        <h1>Sign in</h1>
+        <p class="apply-lead">Members can sign in after their application is approved.</p>
+        <form class="contact-form" action="/login" method="post">
+          <div class="field">
+            <label for="login-email">Email</label>
+            <input id="login-email" name="email" type="email" required autocomplete="username" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="200">
+          </div>
+          <button class="button" type="submit">Sign in</button>
+        </form>
+        <p class="sign-in-join"><a href="/join">Request membership</a></p>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-top">
+          <p class="closing">A Stronger Voice. A Stronger Business Community. A Stronger Walton County.</p>
+          <button class="button" type="button" popovertarget="contact-dialog">Contact</button>
+        </div>
+        <div class="footer-bottom">
+          <span>Walton County Business Leaders · Walton County, Florida</span>
+        </div>
+      </div>
+    </footer>
+    <div id="contact-dialog" class="contact-popover" popover aria-labelledby="contact-heading">
+      <div class="popover-toolbar">
+        <h2 id="contact-heading">Contact us</h2>
+        <button class="contact-close" type="button" popovertarget="contact-dialog" popovertargetaction="hide">Close</button>
+      </div>
+      <p>Have a question or want to learn more? Send us a message.</p>
+      <form class="contact-form" action="/contact" method="post">
+        <div class="field">
+          <label for="contact-name">Name</label>
+          <input id="contact-name" name="name" type="text" required autocomplete="name" maxlength="120">
+        </div>
+        <div class="field">
+          <label for="contact-email">Email</label>
+          <input id="contact-email" name="email" type="email" required autocomplete="email" maxlength="200">
+        </div>
+        <div class="field">
+          <label for="contact-message">Message</label>
+          <textarea id="contact-message" name="message" required rows="6" maxlength="5000"></textarea>
+        </div>
+        <button class="button" type="submit">Send message</button>
+      </form>
+    </div>
+  </body>
+</html>

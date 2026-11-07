@@ -27,6 +27,6 @@ Expected preview URL: https://business-preview.352marc.workers.dev
 
 The homepage has a header, hero, purpose statement, the eight advocacy priorities, two featured issue cards, a free-membership band, and a short footer. Wording for the organization is taken from the November 6, 2026 brief.
 
-Join buttons go to `/join`, a membership application. Membership is free, and applications require administrator approval. The footer Contact button opens a message form. Both forms are emailed to the verified destination in `wrangler.toml`. There is no member login, directory, newsroom, calendar, or admin.
+Join buttons go to `/join`, a membership application. Membership is free, and applications require administrator approval. The header Login link goes to `/login`. Sign-in does not create accounts or store passwords. The footer Contact button opens a message form. Contact messages and membership applications are emailed to the verified destination in `wrangler.toml`. There is no member directory, newsroom, calendar, or admin.
 
 Cormorant Garamond and Source Sans 3 are included under the SIL Open Font License. See `public/fonts/OFL.txt`.

@@ -157,6 +157,18 @@ img {
   font-size: 15px;
 }
 
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+}
+
+.nav-login {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
 .nav > a:not(.button) {
   display: none;
 }
@@ -549,9 +561,41 @@ h1 {
   margin-top: 12px;
 }
 
-.apply .contact-form {
+.apply .contact-form,
+.sign-in .contact-form {
   max-width: 640px;
   margin-top: 32px;
+}
+
+.sign-in {
+  padding: 48px 0 72px;
+  max-width: 760px;
+}
+
+.sign-in h1 {
+  font-size: 40px;
+  letter-spacing: -0.4px;
+  margin: 14px 0 0;
+}
+
+.sign-in-result,
+.sign-in-join {
+  max-width: 640px;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.sign-in-result {
+  margin-top: 18px;
+}
+
+.sign-in-join {
+  margin-top: 22px;
+}
+
+.sign-in-join a {
+  border-bottom: 1px solid #a4acb4;
+  padding-bottom: 3px;
 }
 
 .field label {
@@ -673,6 +717,14 @@ a:focus-visible,
     font-size: 14px;
   }
 
+  .nav-actions {
+    gap: 8px;
+  }
+
+  .nav-login {
+    font-size: 13px;
+  }
+
   .nav .button {
     padding: 8px 10px;
     font-size: 12px;
@@ -712,7 +764,7 @@ a:focus-visible,
   }
 
   .nav {
-    width: 450px;
+    width: 530px;
     justify-content: space-between;
   }
 
@@ -900,8 +952,13 @@ a:focus-visible,
     padding: 72px 0 96px;
   }
 
-  .apply h1 {
+  .apply h1,
+  .sign-in h1 {
     font-size: 56px;
+  }
+
+  .sign-in {
+    padding: 72px 0 96px;
   }
 
   .footer-bottom {
