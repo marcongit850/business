@@ -1,0 +1,11 @@
+# Serves https://waltonleaders.org and www.waltonleaders.org.
+# Custom domains are attached in Cloudflare. Do not remove them from this file's deploy.
+name = "business-preview"
+main = "src/index.js"
+compatibility_date = "2026-11-07"
+workers_dev = true
+
+# Sends only to this verified destination. Does not change DNS or Email Routing.
+[[send_email]]
+name = "EMAIL"
+destination_address = "marc@whpinc.com"

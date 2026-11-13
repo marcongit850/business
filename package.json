@@ -1,0 +1,14 @@
+{
+  "name": "business-preview",
+  "private": true,
+  "type": "module",
+  "description": "Walton County Business Leaders site, served by the business-preview Worker.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  }
+}
