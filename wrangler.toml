@@ -9,3 +9,13 @@ workers_dev = true
 [[send_email]]
 name = "EMAIL"
 destination_address = "marc@whpinc.com"
+
+[observability]
+enabled = true
+
+[observability.logs]
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
