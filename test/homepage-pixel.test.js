@@ -21,7 +21,7 @@ function extract(name) {
   return JSON.parse(source.slice(jsonStart, i + 1));
 }
 
-const PIXEL_ID = "2930031777367970";
+const PIXEL_ID = "1505364711403941";
 const LOADER = "https://connect.facebook.net/en_US/fbevents.js";
 const NOSCRIPT =
   `<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1"/></noscript>`;
@@ -47,11 +47,11 @@ test("homepage head includes the Meta Pixel base code after the existing GA4 sni
   assert.ok(head.includes("https://www.googletagmanager.com/gtag/js?id=G-SFZ02T5TXS"));
   assert.ok(head.includes("gtag('config', 'G-SFZ02T5TXS');"));
   assert.ok(head.indexOf(LOADER) > head.indexOf("gtag('config', 'G-SFZ02T5TXS');"));
-  assert.equal(source.split(LOADER).length - 1, 1);
+  assert.equal(source.split(LOADER).length - 1, 2);
 });
 
 test("the pixel is not on join, login, or the confirmation pages", () => {
-  for (const name of ["JOIN", "THANKS_JOIN", "THANKS_CONTACT", "LOGIN"]) {
+  for (const name of ["JOIN", "THANKS_CONTACT", "LOGIN"]) {
     const html = pages[name];
     assert.equal(html.includes("fbq"), false, name);
     assert.equal(html.includes("fbevents.js"), false, name);
@@ -76,4 +76,11 @@ test("GA4 stays on the pages that already had it", () => {
 test("content security policy allows the pixel loader and keeps the Google hosts", () => {
   assert.equal(source.split("Content-Security-Policy").length - 1, 1);
   assert.ok(source.includes(`"Content-Security-Policy": "${CSP}"`));
+});
+
+test("membership thank-you page has the pixel base code and fires Lead after it", () => {
+  const t = pages.THANKS_JOIN;
+  assert.ok(t.includes(LOADER) && t.includes(NOSCRIPT));
+  assert.ok(t.indexOf("fbq('track', 'Lead');") > t.indexOf("fbq('track', 'PageView');"));
+  assert.ok(t.indexOf("fbq('track', 'Lead');") < t.indexOf("</body>"));
 });
