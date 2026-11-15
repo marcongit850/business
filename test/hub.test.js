@@ -453,7 +453,10 @@ test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
   assert.match(index, /const FROM = "hello@waltonleaders\.org"/);
   assert.match(index, /const TO = "marc@whpinc\.com"/);
   assert.match(index, /Reply-To: " \+ replyTo/);
-  assert.match(wrangler, /allowed_sender_addresses = \["hello@waltonleaders\.org"\]/);
+  assert.match(wrangler, /allowed_sender_addresses/);
+  for (const address of ["hello@waltonleaders.org", "hello@waltonbuildersnetwork.org", "hello@waltontourism.org", "marc@2911studio.com"]) {
+    assert.ok(wrangler.includes(address), address);
+  }
   assert.equal(wrangler.includes("destination_address"), false);
   const docs = readFileSync(new URL("../docs/member-hub.md", import.meta.url), "utf8");
   assert.match(docs, /hello@waltonleaders\.org/);
@@ -462,7 +465,7 @@ test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
 });
 
 test("site copy in the hub does not use em or en dashes", () => {
-  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
+  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../src/application-email.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
     const text = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.equal(/[—–]/.test(text), false, file);
   }

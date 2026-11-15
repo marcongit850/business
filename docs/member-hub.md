@@ -79,7 +79,7 @@ In MailerLite, create these groups:
 
 Copy each group's id into the matching var. On approval the Worker adds the person to the account (the single subscriber list), the master group, that network's group, and that network's approved group. One person can be in several. Approval still completes if `MAILERLITE_API_KEY` is missing, and the application page says `MailerLite not configured`.
 
-For each approved group, add an automation that sends when a subscriber joins the group. Set that automation's from name and from address in MailerLite. Paste the matching message from `docs/welcome-emails.md`. The Worker never picks a from address.
+For each approved group, add an automation that sends when a subscriber joins the group. Set that automation's from name and from address in MailerLite. Paste the matching approval message from `docs/welcome-emails.md`. The Worker does not choose a from address for these MailerLite messages.
 
 Deny does not remove someone from MailerLite.
 
@@ -89,7 +89,9 @@ Cloudflare Email Sending is onboarded for waltonleaders.org. Sign-in mail is sen
 
 Join and contact notices still go to marc@whpinc.com. Their Reply-To is the person who wrote in, so that address can be answered directly.
 
-Magic links go to the member's own address. `wrangler.toml` sets `allowed_sender_addresses = ["hello@waltonleaders.org"]` and does not set `destination_address`, so the binding can mail any recipient. Reply-To on a sign-in link is hello@waltonleaders.org. The message includes a plain text part and an HTML part.
+Magic links go to the member's own address. `wrangler.toml` sets `allowed_sender_addresses` to hello@waltonleaders.org, hello@waltonbuildersnetwork.org, hello@waltontourism.org, and marc@2911studio.com. It does not set `destination_address`, so the binding can mail any recipient from those addresses. Reply-To on a sign-in link is hello@waltonleaders.org. The message includes a plain text part and an HTML part.
+
+A stored application also emails the applicant a thank-you from that network's hello@ address. See `docs/welcome-emails.md`.
 
 The login page always answers `If that email is approved, a link is on its way.` Requests are limited to 5 per email and 20 per IP address each hour. Tokens are stored as SHA-256 hashes, expire after 15 minutes, and work once. The session cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
 

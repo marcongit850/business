@@ -5,10 +5,17 @@ main = "src/index.js"
 compatibility_date = "2026-11-07"
 workers_dev = true
 
-# From address is onboarded for Email Sending. No destination limit, so members can receive mail.
+# Sign-in mail uses hello@waltonleaders.org. Applicant thank-you mail uses each network hello@ address.
+# Notices to marc@whpinc.com still use this binding, from marc@2911studio.com.
+# No destination limit. Does not change DNS or Email Routing.
 [[send_email]]
 name = "EMAIL"
-allowed_sender_addresses = ["hello@waltonleaders.org"]
+allowed_sender_addresses = [
+  "hello@waltonleaders.org",
+  "hello@waltonbuildersnetwork.org",
+  "hello@waltontourism.org",
+  "marc@2911studio.com",
+]
 
 [observability]
 enabled = true

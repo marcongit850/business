@@ -14,6 +14,7 @@ import {
   renderProfile,
   renderUnavailable,
 } from "./hub-pages.js";
+import { scheduleApplicationThankYou } from "./application-email.js";
 import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
 import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
 import {
@@ -242,7 +243,7 @@ function emptyProfile() {
   return { name: "", company: "", role_title: "", phone: "", location: "", website: "", bio: "" };
 }
 
-export async function recordBusinessApplication(env, record) {
+export async function recordBusinessApplication(env, record, ctx) {
   const db = database(env);
   if (!db) {
     console.error(JSON.stringify({ message: "hub database is not configured", action: "join" }));
@@ -251,16 +252,18 @@ export async function recordBusinessApplication(env, record) {
   try {
     const id = crypto.randomUUID();
     const now = nowIso();
+    const email = normalizeEmail(record.email);
     await db.prepare(`INSERT INTO applications
       (id, network, name, email, submitted_at, source_url, fields_json, status, created_at)
       VALUES (?, 'business', ?, ?, ?, 'https://waltonleaders.org/join', ?, 'pending', ?)`).bind(
       id,
       record.name,
-      normalizeEmail(record.email),
+      email,
       now,
       JSON.stringify(record.fields),
       now,
     ).run();
+    scheduleApplicationThankYou(ctx, env, { network: "business", name: record.name, email });
     return { ok: true, id };
   } catch (error) {
     logError("join application was not saved", error);
@@ -268,7 +271,7 @@ export async function recordBusinessApplication(env, record) {
   }
 }
 
-export async function handleHub(request, env, ui) {
+export async function handleHub(request, env, ui, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
   const loginNetwork = loginNetworkFromUrl(url);
@@ -293,7 +296,7 @@ export async function handleHub(request, env, ui) {
 
   try {
     const db = database(env);
-    if (path === "/api/hub/applications") return await ingest(request, env, db, json);
+    if (path === "/api/hub/applications") return await ingest(request, env, db, json, ctx);
     if (!db) {
       if (loginPost) return redirect(loginPath({ notice: "unavailable", network: loginNetwork }));
       if (request.method === "GET" || request.method === "HEAD") return unavailable();
@@ -313,7 +316,7 @@ export async function handleHub(request, env, ui) {
   }
 }
 
-async function ingest(request, env, db, json) {
+async function ingest(request, env, db, json, ctx) {
   if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
   const configured = String(env.HUB_INGEST_KEY || "");
   if (!configured) return json({ ok: false, error: "Hub ingest is not configured" }, 503);
@@ -334,6 +337,7 @@ async function ingest(request, env, db, json) {
     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
     id, item.network, item.name, item.email, item.submitted_at, item.source_url, JSON.stringify(item.fields), now,
   ).run();
+  scheduleApplicationThankYou(ctx, env, { network: item.network, name: item.name, email: item.email });
   return json({ ok: true, id }, 201);
 }
 

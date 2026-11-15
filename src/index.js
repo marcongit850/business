@@ -81,7 +81,7 @@ const ROBOTS_TXT = "User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /admin\
 const SITEMAP_XML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url><loc>https://waltonleaders.org/</loc></url>\n  <url><loc>https://waltonleaders.org/join</loc></url>\n</urlset>\n";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     {
       let redirect = false;
@@ -93,7 +93,7 @@ export default {
     }
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
 
-    const hubResponse = await handleHub(request, env, { html, text });
+    const hubResponse = await handleHub(request, env, { html, text }, ctx);
     if (hubResponse) return hubResponse;
 
     if (request.method === "POST" && (url.pathname === "/contact" || url.pathname === "/join")) {
@@ -145,7 +145,7 @@ export default {
             website,
             about,
           },
-        });
+        }, ctx);
         await sendMail(
           env,
           email,

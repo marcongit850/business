@@ -8,7 +8,7 @@ HTML pages live in `src/index.js`. Styles, fonts, and images are loaded from jsD
 
 Merging to `main` publishes the site through Cloudflare Workers Builds. The build runs `npx wrangler deploy` for the Worker `business-preview`. Leave the existing custom domains `waltonleaders.org` and `www.waltonleaders.org` attached to the Worker.
 
-The member hub needs a D1 database and a private R2 bucket before that deploy can succeed. The ids in `wrangler.toml` are placeholders until then. Setup, MailerLite, and the sign-in email limit are in `docs/member-hub.md`. Welcome email copy is in `docs/welcome-emails.md`.
+The member hub needs a D1 database and a private R2 bucket before that deploy can succeed. The ids in `wrangler.toml` are placeholders until then. Setup, MailerLite, and the sign-in email limit are in `docs/member-hub.md`. Application thank-you mail and MailerLite approval copy are in `docs/welcome-emails.md`.
 
 ## Checks
 
