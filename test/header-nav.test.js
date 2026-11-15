@@ -26,7 +26,6 @@ const pages = {
   JOIN: extract("JOIN"),
   THANKS_JOIN: extract("THANKS_JOIN"),
   THANKS_CONTACT: extract("THANKS_CONTACT"),
-  LOGIN: extract("LOGIN"),
 };
 
 test("every page header keeps a one-tap Login link and an accessible menu button", () => {

@@ -85,7 +85,7 @@ Deny does not remove someone from MailerLite.
 
 ## Sign-in email
 
-Cloudflare Email Sending is onboarded for waltonleaders.org. Portal mail is sent from `Walton County Business Leaders <hello@waltonleaders.org>`.
+Cloudflare Email Sending is onboarded for waltonleaders.org. Sign-in mail is sent from hello@waltonleaders.org. The display name, subject, and body use the network the member is signing in to.
 
 Join and contact notices still go to marc@whpinc.com. Their Reply-To is the person who wrote in, so that address can be answered directly.
 
@@ -121,3 +121,19 @@ Header: `X-Hub-Key: <HUB_INGEST_KEY>`
 - Create the MailerLite groups, paste the welcome copy, and set each approved group's from name and from address.
 - Set `MAILERLITE_API_KEY`. The group ids are already in `wrangler.toml`.
 - In Google Ads, conversion action primary and secondary settings are still changed in the Google Ads interface.
+
+## Network sign-in
+
+Members sign in to one network at a time.
+
+- Business Leaders: https://waltonleaders.org/login/business
+- Builders: https://waltonleaders.org/login/builders
+- Tourism: https://waltonleaders.org/login/tourism
+
+`/login?network=builders` opens the same page as `/login/builders`. Plain https://waltonleaders.org/login lists the three networks and does not send a sign-in link.
+
+The Builders site should link to https://waltonleaders.org/login/builders. The Tourism site should link to https://waltonleaders.org/login/tourism.
+
+After the link is opened, the member lands on that network's hub. `/hub` sends them to the network they last signed in through, or to their earliest approved network. A person in more than one network sees a short line on the network page linking to each other hub.
+
+Approving an application can also add the other networks. The applied network stays included. Each checked network gets a membership. MailerLite is updated once with the master group plus that network's group and approved group, so each welcome automation can run. The application notes record the networks that were added.

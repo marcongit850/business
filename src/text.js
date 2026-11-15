@@ -1,3 +1,5 @@
+import { networkId } from "./networks.js";
+
 export const SIGN_IN_FROM = "hello@waltonleaders.org";
 export const SIGN_IN_FROM_NAME = "Walton County Business Leaders";
 
@@ -109,27 +111,34 @@ export function safeReturnPath(value) {
   return `${path}${url.search}`;
 }
 
-export function signInDestination(isAdmin, next) {
+export function signInDestination(isAdmin, next, network, memberships) {
   const safe = safeReturnPath(next);
   if (safe) return safe;
+  const id = networkId(network);
+  const list = Array.isArray(memberships) ? memberships : [];
+  if (id && list.includes(id)) return `/hub/${id}`;
   return isAdmin ? "/admin" : "/hub";
 }
 
-export function loginPath({ notice = "", sent = false, next = "" } = {}) {
+export function loginPath({ notice = "", sent = false, next = "", network = "" } = {}) {
   const params = new URLSearchParams();
   if (sent) params.set("sent", "1");
   if (notice) params.set("notice", notice);
   const safe = safeReturnPath(next);
   if (safe) params.set("next", safe);
   const query = params.toString();
-  return query ? `/login?${query}` : "/login";
+  const id = networkId(network);
+  const path = id ? `/login/${id}` : "/login";
+  return query ? `${path}?${query}` : path;
 }
 
-export function verifyLinkPath(token, next) {
+export function verifyLinkPath(token, next, network) {
   const params = new URLSearchParams();
   params.set("token", String(token ?? ""));
   const safe = safeReturnPath(next);
   if (safe) params.set("next", safe);
+  const id = networkId(network);
+  if (id) params.set("network", id);
   return `/login/verify?${params.toString()}`;
 }
 
@@ -144,8 +153,10 @@ export function applicationNoteText(note, network) {
 export function buildSignInEmail(to, url, from = SIGN_IN_FROM, fromName = SIGN_IN_FROM_NAME) {
   const safeTo = String(to ?? "").replace(/[\r\n]+/g, "");
   const safeUrl = String(url ?? "").replace(/[\r\n]+/g, "");
+  const name = String(fromName ?? "").replace(/[\r\n"]/g, "").trim() || "Member sign-in";
+  const lead = `Sign in to ${name}`;
   const text = [
-    "Sign in to Walton County networks",
+    lead,
     "",
     "This link signs you in. It works once and expires in 15 minutes.",
     "",
@@ -157,8 +168,8 @@ export function buildSignInEmail(to, url, from = SIGN_IN_FROM, fromName = SIGN_I
   const html = `<!doctype html>
 <html lang="en">
 <body style="margin:0;padding:24px;background:#f6f3ec;color:#001840;font-family:Georgia,serif;">
-  <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Walton County Business Leaders</p>
-  <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;">Sign in to Walton County networks</h1>
+  <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(name)}</p>
+  <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;">${escapeHtml(lead)}</h1>
   <p>This link signs you in. It works once and expires in 15 minutes.</p>
   <p><a href="${escapedUrl}" style="color:#001840;">Sign in</a></p>
   <p>Or copy this address:<br>${escapedUrl}</p>
@@ -167,10 +178,10 @@ export function buildSignInEmail(to, url, from = SIGN_IN_FROM, fromName = SIGN_I
 </html>`;
   const boundary = `walton-${crypto.randomUUID()}`;
   const raw = [
-    `From: ${fromName} <${from}>`,
+    `From: ${name} <${from}>`,
     `To: ${safeTo}`,
     `Reply-To: ${from}`,
-    "Subject: Your sign-in link",
+    `Subject: ${lead}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     "",

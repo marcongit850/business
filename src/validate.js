@@ -1,6 +1,7 @@
+import { networkId, NETWORK_IDS } from "./networks.js";
 import { cleanLine, isEmail, isSlug, safeUrl, slugify } from "./text.js";
 
-export const NETWORKS = ["business", "builders", "tourism"];
+export const NETWORKS = NETWORK_IDS;
 export const CONTENT_TYPES = ["page", "announcement", "resource", "post"];
 
 export const PROFILE_LIMITS = {
@@ -115,6 +116,28 @@ export function groupIdsForApproval(env, network) {
   const suffix = network.toUpperCase();
   const names = [`MAILERLITE_GROUP_MASTER`, `MAILERLITE_GROUP_${suffix}`, `MAILERLITE_GROUP_${suffix}_APPROVED`];
   return names.map((name) => String(env?.[name] ?? "").trim()).filter(Boolean);
+}
+
+export function approvalNetworks(applied, selected) {
+  const base = networkId(applied);
+  if (!base) return [];
+  const picked = new Set([base]);
+  const values = Array.isArray(selected) ? selected : [];
+  for (const value of values) {
+    const id = networkId(value);
+    if (id) picked.add(id);
+  }
+  return [base, ...NETWORK_IDS.filter((id) => id !== base && picked.has(id))];
+}
+
+export function groupIdsForApprovals(env, networks) {
+  const ids = [];
+  for (const network of networks) {
+    for (const id of groupIdsForApproval(env, network)) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
 }
 
 export function mailerLitePayload(email, name, groupIds) {
