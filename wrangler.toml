@@ -19,3 +19,22 @@ head_sampling_rate = 1
 [observability.traces]
 enabled = true
 head_sampling_rate = 1
+
+[[d1_databases]]
+binding = "DB"
+database_name = "walton-hub"
+database_id = "be08bd25-0a50-4148-ac09-c201b58c6e6d"
+
+[[r2_buckets]]
+binding = "HUB_MEDIA"
+bucket_name = "walton-hub-media"
+
+[vars]
+ADMIN_EMAILS = "marc@whpinc.com"
+MAILERLITE_GROUP_MASTER = ""
+MAILERLITE_GROUP_BUSINESS = ""
+MAILERLITE_GROUP_BUILDERS = ""
+MAILERLITE_GROUP_TOURISM = ""
+MAILERLITE_GROUP_BUSINESS_APPROVED = ""
+MAILERLITE_GROUP_BUILDERS_APPROVED = ""
+MAILERLITE_GROUP_TOURISM_APPROVED = ""
