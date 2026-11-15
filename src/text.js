@@ -1,3 +1,6 @@
+export const SIGN_IN_FROM = "hello@waltonleaders.org";
+export const SIGN_IN_FROM_NAME = "Walton County Business Leaders";
+
 export function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -136,6 +139,55 @@ export function applicationNoteText(note, network) {
   const where = networkLabel(network) || "Network";
   const body = String(note?.body || "").replace(/\r\n/g, "\n").trim();
   return `${when} · ${author} · ${where} application\n${body}`;
+}
+
+export function buildSignInEmail(to, url, from = SIGN_IN_FROM, fromName = SIGN_IN_FROM_NAME) {
+  const safeTo = String(to ?? "").replace(/[\r\n]+/g, "");
+  const safeUrl = String(url ?? "").replace(/[\r\n]+/g, "");
+  const text = [
+    "Sign in to Walton County networks",
+    "",
+    "This link signs you in. It works once and expires in 15 minutes.",
+    "",
+    safeUrl,
+    "",
+    "If you did not ask for this, you can ignore the email.",
+  ].join("\n");
+  const escapedUrl = escapeHtml(safeUrl);
+  const html = `<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:24px;background:#f6f3ec;color:#001840;font-family:Georgia,serif;">
+  <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Walton County Business Leaders</p>
+  <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;">Sign in to Walton County networks</h1>
+  <p>This link signs you in. It works once and expires in 15 minutes.</p>
+  <p><a href="${escapedUrl}" style="color:#001840;">Sign in</a></p>
+  <p>Or copy this address:<br>${escapedUrl}</p>
+  <p>If you did not ask for this, you can ignore the email.</p>
+</body>
+</html>`;
+  const boundary = `walton-${crypto.randomUUID()}`;
+  const raw = [
+    `From: ${fromName} <${from}>`,
+    `To: ${safeTo}`,
+    `Reply-To: ${from}`,
+    "Subject: Your sign-in link",
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    text,
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    html,
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+  return { from, to: safeTo, raw };
 }
 
 export function mergeAdminNotes(existing, blocks, limit = 10000) {

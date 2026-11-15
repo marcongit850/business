@@ -5,6 +5,7 @@ import test from "node:test";
 import { sniffImage, stripImageMetadata } from "../src/images.js";
 import {
   applicationNoteText,
+  buildSignInEmail,
   externalUrl,
   loginPath,
   mergeAdminNotes,
@@ -381,6 +382,47 @@ test("phones, websites, return paths, and note copies stay safe", () => {
   assert.match(migration, /CREATE TABLE application_notes/);
   assert.match(migration, /copied_at/);
   assert.equal(/[—–]/.test(migration), false);
+});
+
+test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
+  const url = "https://waltonleaders.org/login/verify?token=abc&next=/hub";
+  const message = buildSignInEmail("ada@example.com", url);
+  assert.equal(message.from, "hello@waltonleaders.org");
+  assert.equal(message.to, "ada@example.com");
+  assert.match(message.raw, /From: Walton County Business Leaders <hello@waltonleaders\.org>/);
+  assert.match(message.raw, /To: ada@example\.com/);
+  assert.match(message.raw, /Reply-To: hello@waltonleaders\.org/);
+  assert.equal(message.raw.includes("Reply-To: ada@example.com"), false);
+  assert.match(message.raw, /multipart\/alternative/);
+  assert.match(message.raw, /Content-Type: text\/plain; charset=utf-8/);
+  assert.match(message.raw, /Content-Type: text\/html; charset=utf-8/);
+  const [textPart, htmlPart] = message.raw.split("Content-Type: text/html");
+  assert.match(textPart, /https:\/\/waltonleaders\.org\/login\/verify\?token=abc&next=\/hub/);
+  assert.match(htmlPart, /href="https:\/\/waltonleaders\.org\/login\/verify\?token=abc&amp;next=\/hub"/);
+  assert.equal(htmlPart.includes("<script>"), false);
+  assert.equal(/[—–]/.test(message.raw), false);
+
+  const hostile = buildSignInEmail("ada@example.com", "https://waltonleaders.org/x?q=1\"><script>alert(1)</script>");
+  const hostileHtml = hostile.raw.slice(hostile.raw.indexOf("Content-Type: text/html"));
+  assert.equal(hostileHtml.includes("<script>"), false);
+  assert.match(hostileHtml, /&lt;script&gt;/);
+
+  const hub = readFileSync(new URL("../src/hub.js", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const wrangler = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  assert.equal(hub.includes("marc@2911studio.com"), false);
+  assert.equal(hub.includes("VERIFIED_DESTINATION"), false);
+  assert.match(hub, /const FROM = "hello@waltonleaders\.org"/);
+  assert.match(hub, /new EmailMessage\(message\.from, message\.to, message\.raw\)/);
+  assert.match(index, /const FROM = "hello@waltonleaders\.org"/);
+  assert.match(index, /const TO = "marc@whpinc\.com"/);
+  assert.match(index, /Reply-To: " \+ replyTo/);
+  assert.match(wrangler, /allowed_sender_addresses = \["hello@waltonleaders\.org"\]/);
+  assert.equal(wrangler.includes("destination_address"), false);
+  const docs = readFileSync(new URL("../docs/member-hub.md", import.meta.url), "utf8");
+  assert.match(docs, /hello@waltonleaders\.org/);
+  assert.match(docs, /still go to marc@whpinc\.com/);
+  assert.equal(docs.includes("only to marc@whpinc.com"), false);
 });
 
 test("site copy in the hub does not use em or en dashes", () => {

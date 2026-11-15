@@ -15,7 +15,7 @@ import {
   renderProfile,
   renderUnavailable,
 } from "./hub-pages.js";
-import { applicationNoteText, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
+import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
 import {
   firstPublishedAt,
   groupIdsForApproval,
@@ -26,8 +26,7 @@ import {
   validateProfile,
 } from "./validate.js";
 
-const VERIFIED_DESTINATION = "marc@whpinc.com";
-const FROM = "marc@2911studio.com";
+const FROM = "hello@waltonleaders.org";
 const FROM_NAME = "Walton County Business Leaders";
 const MAGIC_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -177,35 +176,12 @@ async function csrfOk(session, form) {
 }
 
 async function sendMagicLink(env, email, url) {
-  if (email !== VERIFIED_DESTINATION) {
-    console.log(JSON.stringify({ message: "magic link stored but not emailed", reason: "send_email destination is fixed" }));
-    return;
-  }
   if (!env.EMAIL || typeof env.EMAIL.send !== "function") {
     console.error(JSON.stringify({ message: "email binding missing" }));
     return;
   }
-  const body = [
-    "Sign in to Walton County networks",
-    "",
-    "This link signs you in. It works once and expires in 15 minutes.",
-    "",
-    url,
-    "",
-    "If you did not ask for this, you can ignore the email.",
-  ].join("\n");
-  const raw = [
-    `From: ${FROM_NAME} <${FROM}>`,
-    `To: ${VERIFIED_DESTINATION}`,
-    `Reply-To: ${email}`,
-    "Subject: Your sign-in link",
-    "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    body,
-  ].join("\r\n");
-  await env.EMAIL.send(new EmailMessage(FROM, VERIFIED_DESTINATION, raw));
+  const message = buildSignInEmail(email, url, FROM, FROM_NAME);
+  await env.EMAIL.send(new EmailMessage(message.from, message.to, message.raw));
 }
 
 async function addToMailerLite(env, email, name, groups) {
@@ -438,7 +414,6 @@ async function listApplications(env, db, url, session, page) {
     ORDER BY submitted_at DESC LIMIT 200`).bind(network, network, status, status).all();
   const notes = [];
   if (!String(env.MAILERLITE_API_KEY || "").trim()) notes.push("MailerLite not configured.");
-  notes.push("Sign-in email currently reaches only marc@whpinc.com. Other approved members are not emailed a link until a transactional sender is connected.");
   return page(renderApplications({ session, network, status, rows: result.results || [], mailerNote: notes.join(" ") }));
 }
 

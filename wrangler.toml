@@ -5,10 +5,10 @@ main = "src/index.js"
 compatibility_date = "2026-11-07"
 workers_dev = true
 
-# Sends only to this verified destination. Does not change DNS or Email Routing.
+# From address is onboarded for Email Sending. No destination limit, so members can receive mail.
 [[send_email]]
 name = "EMAIL"
-destination_address = "marc@whpinc.com"
+allowed_sender_addresses = ["hello@waltonleaders.org"]
 
 [observability]
 enabled = true
