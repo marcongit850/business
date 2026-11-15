@@ -5,6 +5,9 @@ import {
   renderApplications,
   renderContentEditor,
   renderContentList,
+  renderFlagForm,
+  renderFlaggedIssue,
+  renderFlaggedIssues,
   renderMemberDetail,
   renderMemberItem,
   renderMembers,
@@ -15,7 +18,19 @@ import {
   renderUnavailable,
 } from "./hub-pages.js";
 import { scheduleApplicationThankYou } from "./application-email.js";
+import {
+  FLAG_EMAIL_LIMIT,
+  FLAG_IP_LIMIT,
+  buildFlagNotice,
+  createFlaggedIssue,
+  listFlaggedIssues,
+  listMemberIssues,
+  loadFlaggedIssue,
+  readIssueFile,
+  updateIssueStatus,
+} from "./issues.js";
 import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
+import { emptyProfile, fillProfileFromApplications, profileHasBlank } from "./profile-prefill.js";
 import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
 import {
   approvalNetworks,
@@ -239,10 +254,6 @@ function parseFields(raw) {
   }
 }
 
-function emptyProfile() {
-  return { name: "", company: "", role_title: "", phone: "", location: "", website: "", bio: "" };
-}
-
 export async function recordBusinessApplication(env, record, ctx) {
   const db = database(env);
   if (!db) {
@@ -422,6 +433,9 @@ async function adminRoutes(request, env, db, url, page, redirect) {
   if (path === "/admin" && (request.method === "GET" || request.method === "HEAD")) return listApplications(env, db, url, session, page);
   const applicationMatch = path.match(/^\/admin\/applications\/([0-9a-f-]{36})(\/approve|\/deny|\/notes)?$/);
   if (applicationMatch) return applicationRoute(request, env, db, session, applicationMatch[1], applicationMatch[2] || "", page, redirect);
+  if (path === "/admin/issues" && (request.method === "GET" || request.method === "HEAD")) return listFlagPage(db, session, page);
+  const issueMatch = path.match(/^\/admin\/issues\/([0-9a-f-]{36})(\/status|\/files\/([0-9a-f-]{36}))?$/);
+  if (issueMatch) return issueAdminRoute(request, env, db, session, issueMatch[1], issueMatch[2] || "", issueMatch[3] || "", url, page, redirect);
   if (path === "/admin/members" && (request.method === "GET" || request.method === "HEAD")) return listMembers(db, session, page);
   const memberMatch = path.match(/^\/admin\/members\/([0-9a-f-]{36})(\/notes)?$/);
   if (memberMatch) return memberRoute(request, db, session, memberMatch[1], memberMatch[2] || "", url, page, redirect);
@@ -445,6 +459,57 @@ async function listApplications(env, db, url, session, page) {
   const notes = [];
   if (!String(env.MAILERLITE_API_KEY || "").trim()) notes.push("MailerLite not configured.");
   return page(renderApplications({ session, network, status, rows: result.results || [], mailerNote: notes.join(" ") }));
+}
+
+async function listFlagPage(db, session, page) {
+  try {
+    const rows = await listFlaggedIssues(db);
+    return page(renderFlaggedIssues({ session, rows }));
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    return page(renderMessage({ title: "Flagged issues", message: "Flagged issues need the latest database migration before they can be listed.", session, admin: true }), 503);
+  }
+}
+
+async function issueAdminRoute(request, env, db, session, id, action, fileId, url, page, redirect) {
+  if (action.startsWith("/files/") && (request.method === "GET" || request.method === "HEAD")) {
+    return downloadIssueFile(request, env, db, session, id, fileId, page);
+  }
+  let loaded;
+  try {
+    loaded = await loadFlaggedIssue(db, id);
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    return page(renderMessage({ title: "Flagged issues", message: "Flagged issues need the latest database migration before they can be opened.", session, admin: true }), 503);
+  }
+  if (!loaded) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
+  if (action === "/status" && request.method === "POST") {
+    const form = await request.formData();
+    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+    const result = await updateIssueStatus(db, id, String(form.get("status") || ""), nowIso());
+    if (!result.ok) return page(renderFlaggedIssue({ session, ...loaded, message: result.error }), 400);
+    return redirect(`/admin/issues/${id}?saved=1`);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
+  const message = url.searchParams.get("saved") === "1" ? "Status saved." : "";
+  return page(renderFlaggedIssue({ session, ...loaded, message }));
+}
+
+async function downloadIssueFile(request, env, db, session, issueId, fileId, page) {
+  let file;
+  try {
+    file = await readIssueFile(db, env.HUB_MEDIA, issueId, fileId);
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
+  }
+  if (!file) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
+  const headers = new Headers(page("").headers);
+  headers.set("Content-Type", file.contentType || "application/octet-stream");
+  headers.set("Content-Disposition", `attachment; filename="${file.filename.replace(/"/g, "")}"`);
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(request.method === "HEAD" ? null : file.body, { headers });
 }
 
 async function applicationRoute(request, env, db, session, id, action, page, redirect) {
@@ -554,6 +619,8 @@ async function approveApplication(env, db, application, reviewer, form) {
       VALUES (?, ?, 'member', 'approved', ?, ?)
       ON CONFLICT(member_id, network) DO UPDATE SET status = 'approved', updated_at = excluded.updated_at`).bind(memberId, network, now, now).run();
   }
+  const existingProfile = await db.prepare("SELECT name, company, role_title, phone, location, website, bio FROM member_profiles WHERE member_id = ?").bind(memberId).first();
+  await fillProfileFromApplications(db, memberId, existingProfile, [application], now);
   let status = "not_configured";
   let detail = "MailerLite not configured";
   if (String(env.MAILERLITE_API_KEY || "").trim()) {
@@ -824,14 +891,15 @@ async function memberRoutes(request, env, db, url, page, redirect) {
   const also = memberships.filter((id) => id !== network);
   if (!memberships.includes(network)) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 404);
   if (slug === "profile") return profileRoute(request, db, session, admin, url, page, redirect, network, also);
+  if (slug === "flag") return flagRoute(request, env, db, session, admin, url, page, redirect, network, also);
   if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
-  if (!slug) return networkHome(db, session, admin, network, page, also);
+  if (!slug) return networkHome(db, session, admin, network, page, also, url.searchParams.get("flagged") === "1");
   const item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE network = ? AND slug = ? AND status = 'published'`).bind(network, slug).first();
   if (!item) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 404);
   return page(renderMemberItem({ session, admin, item, also }));
 }
 
-async function networkHome(db, session, admin, network, page, also) {
+async function networkHome(db, session, admin, network, page, also, flagged) {
   const result = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items
     WHERE network = ? AND status = 'published'
     ORDER BY pinned DESC, CASE type WHEN 'announcement' THEN 0 ELSE 1 END, COALESCE(published_at, updated_at) DESC`).bind(network).all();
@@ -844,15 +912,94 @@ async function networkHome(db, session, admin, network, page, also) {
       topIds.add(item.id);
     }
   }
+  const member = await db.prepare("SELECT id FROM members WHERE email = ?").bind(session.email).first();
+  let issues = [];
+  if (member) {
+    try {
+      issues = await listMemberIssues(db, member.id, network);
+    } catch (error) {
+      if (!missingTable(error)) throw error;
+    }
+  }
   return page(renderNetworkHub({
     session,
     admin,
     network,
     also,
+    flagged,
+    issues,
     top,
     resources: items.filter((item) => item.type === "resource" && !topIds.has(item.id)),
     stories: items.filter((item) => (item.type === "post" || item.type === "page") && !topIds.has(item.id)),
   }));
+}
+
+function issueDraft(form) {
+  return {
+    title: String(form.get("title") || ""),
+    body: String(form.get("body") || ""),
+    where_text: String(form.get("where") || ""),
+    deadline: String(form.get("deadline") || ""),
+    link_url: String(form.get("link_url") || ""),
+    effect: String(form.get("effect") || ""),
+    contact_ok: form.get("contact_ok") === "1",
+  };
+}
+
+async function flagRoute(request, env, db, session, admin, url, page, redirect, network, also) {
+  const member = await db.prepare("SELECT id, email, name FROM members WHERE email = ?").bind(session.email).first();
+  if (!member) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 404);
+  if (request.method === "POST") {
+    const form = await request.formData();
+    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin, network, also }), 403);
+    const draft = issueDraft(form);
+    const emailHit = await rateLimited(db, `flag-email:${session.email}`, FLAG_EMAIL_LIMIT);
+    const ipHit = await rateLimited(db, `flag-ip:${clientIp(request)}`, FLAG_IP_LIMIT);
+    if (emailHit || ipHit) {
+      return page(renderFlagForm({ session, admin, network, also, draft, message: "Please wait a bit and try again." }), 429);
+    }
+    const files = [];
+    for (const item of form.getAll("files")) {
+      if (!item || typeof item.arrayBuffer !== "function" || !item.size) continue;
+      files.push({ filename: String(item.name || ""), bytes: new Uint8Array(await item.arrayBuffer()) });
+    }
+    let created;
+    try {
+      created = await createFlaggedIssue(db, env.HUB_MEDIA, {
+        memberId: member.id,
+        network,
+        issue: draft,
+        files,
+        now: nowIso(),
+      });
+    } catch (error) {
+      if (missingTable(error)) {
+        return page(renderFlagForm({ session, admin, network, also, draft, message: "Flagged issues need the latest database migration before they can be saved." }), 503);
+      }
+      throw error;
+    }
+    if (!created.ok) return page(renderFlagForm({ session, admin, network, also, draft, message: created.error }), created.status || 400);
+    try {
+      const notice = buildFlagNotice({
+        network,
+        memberEmail: member.email,
+        memberName: member.name,
+        issue: created.issue,
+        files: created.files,
+        origin: publicOrigin(request),
+      });
+      if (notice && env.EMAIL && typeof env.EMAIL.send === "function") {
+        await env.EMAIL.send(new EmailMessage(notice.from, notice.to, notice.raw));
+      } else if (notice) {
+        console.error(JSON.stringify({ message: "email binding missing", action: "flag-issue" }));
+      }
+    } catch (error) {
+      logError("flagged issue email failed", error);
+    }
+    return redirect(`/hub/${network}?flagged=1`);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
+  return page(renderFlagForm({ session, admin, network, also }));
 }
 
 async function profileRoute(request, db, session, admin, url, page, redirect, network, also) {
@@ -928,8 +1075,17 @@ async function profileRoute(request, db, session, admin, url, page, redirect, ne
 async function profileView(db, member) {
   const profile = await db.prepare("SELECT name, company, role_title, phone, location, website, bio FROM member_profiles WHERE member_id = ?").bind(member.id).first();
   const fields = await db.prepare("SELECT id, label, value FROM member_profile_fields WHERE member_id = ? ORDER BY sort_order, label").bind(member.id).all();
+  let filled = profile || emptyProfile();
+  if (!profile || profileHasBlank(profile)) {
+    const apps = await db.prepare(
+      "SELECT name, fields_json FROM applications WHERE email = ? AND status = 'approved' ORDER BY submitted_at ASC, created_at ASC",
+    ).bind(member.email).all();
+    const result = await fillProfileFromApplications(db, member.id, profile, apps.results || [], nowIso());
+    filled = result.profile;
+  }
+  if (!String(filled.name || "").trim() && member.name) filled = { ...filled, name: member.name };
   return {
-    profile: profile || { ...emptyProfile(), name: member.name || "" },
+    profile: filled,
     fields: fields.results || [],
   };
 }

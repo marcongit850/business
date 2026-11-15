@@ -24,7 +24,7 @@ Apply the schema to the remote database:
 npx wrangler d1 migrations apply walton-hub --remote
 ```
 
-Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes.
+Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes. `migrations/0003_flagged_issues.sql` adds flagged issues and their file records. Apply it before members use Flag an Issue. The hub still loads without it. Saving an issue then says the migration is needed.
 
 Local preview:
 
@@ -139,3 +139,9 @@ The Builders site should link to https://waltonleaders.org/login/builders. The T
 After the link is opened, the member lands on that network's hub. `/hub` sends them to the network they last signed in through, or to their earliest approved network. A person in more than one network sees a short line on the network page linking to each other hub.
 
 Approving an application can also add the other networks. The applied network stays included. Each checked network gets a membership. MailerLite is updated once with the master group plus that network's group and approved group, so each welcome automation can run. The application notes record the networks that were added.
+
+Approving also copies that application's answers into blank profile fields. Company, phone, website, role, about, and any other answer that matches a profile column are copied. A value already on the profile is left as the member saved it. Answers stay as the applicant typed them. Opening the profile does the same fill for approved members whose fields are still blank, from their approved applications, oldest first.
+
+## Flag an issue
+
+An approved member can flag an issue on the hub of a network they belong to. The form stays on that network. Files are stored in the private `walton-hub-media` bucket. PDF, image, and Word files are accepted, up to 5 files and 10 MB each. A notice goes to marc@whpinc.com from that network's hello@ address, with Reply-To set to the member. The member does not get a copy. Admins see the list at `/admin/issues` and can set the status to New, Looking into it, Taking action, or Closed. Members see only their own issues for the network they are viewing.
