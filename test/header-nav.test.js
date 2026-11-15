@@ -33,9 +33,12 @@ test("every page header keeps a one-tap Login link and an accessible menu button
     const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
     assert.match(header, /<button type="button" class="nav-toggle" aria-expanded="false" aria-controls="nav-menu">/);
     assert.match(header, /<span class="visually-hidden">Menu<\/span>/);
-    assert.match(header, /<a class="nav-login" href="\/login">Login<\/a>/);
+    assert.match(header, /<a class="nav-login" href="\/login\/business">Login<\/a>/);
     assert.match(header, /<a class="button" href="\/join">Join the mission<\/a>/);
-    assert.match(header, /<a href="\/login">Login<\/a>/);
+    assert.match(header, /<a href="\/login\/business">Login<\/a>/);
+    if (name === "HOME") {
+      assert.match(html, /<a class="button" href="\/login\/business">Sign in<\/a>/);
+    }
     assert.equal(header.includes("onclick"), false, name);
     assert.equal(/[—–]/.test(header), false, name);
     const about = name === "HOME" ? 'href="#about"' : 'href="/#about"';
