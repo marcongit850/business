@@ -8,11 +8,14 @@ import {
   renderFlagForm,
   renderFlaggedIssue,
   renderFlaggedIssues,
+  renderMemberDelete,
   renderMemberDetail,
+  renderMemberEdit,
   renderMemberItem,
   renderMembers,
   renderMessage,
   renderNetworkHub,
+  renderLogin,
   renderPreview,
   renderProfile,
   renderUnavailable,
@@ -31,7 +34,7 @@ import {
 } from "./issues.js";
 import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
 import { emptyProfile, fillProfileFromApplications, profileHasBlank } from "./profile-prefill.js";
-import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
+import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, safeReturnPath, signInDestination, verifyLinkPath } from "./text.js";
 import {
   approvalNetworks,
   firstPublishedAt,
@@ -244,6 +247,58 @@ async function addToMailerLite(env, email, name, groups) {
   }
 }
 
+async function removeFromMailerLite(env, email, groups) {
+  if (!String(env?.MAILERLITE_API_KEY || "").trim()) {
+    return { status: "not_configured", detail: "MailerLite not configured" };
+  }
+  const ids = (groups || []).filter(Boolean);
+  if (!ids.length) return { status: "skipped", detail: "No MailerLite groups for this member" };
+  try {
+    const headers = {
+      Authorization: `Bearer ${env.MAILERLITE_API_KEY}`,
+      Accept: "application/json",
+    };
+    const lookup = await fetch(`https://connect.mailerlite.com/api/subscribers/${encodeURIComponent(email)}`, { headers });
+    if (lookup.status === 404) {
+      console.log(JSON.stringify({ message: "mailerlite subscriber not found", email }));
+      return { status: "skipped", detail: "MailerLite subscriber was not found" };
+    }
+    const text = await lookup.text();
+    if (!lookup.ok) {
+      console.error(JSON.stringify({ message: "mailerlite lookup failed", status: lookup.status, detail: text.slice(0, 300) }));
+      return { status: "failed", detail: "MailerLite could not be updated" };
+    }
+    let subscriberId = "";
+    try {
+      subscriberId = String(JSON.parse(text)?.data?.id || "");
+    } catch {
+      subscriberId = "";
+    }
+    if (!subscriberId) {
+      console.error(JSON.stringify({ message: "mailerlite lookup missing id", email }));
+      return { status: "failed", detail: "MailerLite could not be updated" };
+    }
+    let failed = false;
+    for (const group of ids) {
+      const response = await fetch(
+        `https://connect.mailerlite.com/api/subscribers/${encodeURIComponent(subscriberId)}/groups/${encodeURIComponent(group)}`,
+        { method: "DELETE", headers },
+      );
+      if (!response.ok && response.status !== 404) {
+        failed = true;
+        const detail = await response.text();
+        console.error(JSON.stringify({ message: "mailerlite group remove failed", status: response.status, group, detail: detail.slice(0, 300) }));
+      }
+    }
+    return failed
+      ? { status: "failed", detail: "MailerLite could not be updated" }
+      : { status: "removed", detail: "Removed from MailerLite groups" };
+  } catch (error) {
+    logError("mailerlite error", error);
+    return { status: "failed", detail: "MailerLite could not be updated" };
+  }
+}
+
 function parseFields(raw) {
   try {
     const value = JSON.parse(raw || "{}");
@@ -286,8 +341,11 @@ export async function handleHub(request, env, ui, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
   const loginNetwork = loginNetworkFromUrl(url);
+  const loginPage = path === "/login" || path === "/login.html" || (loginNetwork && path === `/login/${loginNetwork}`);
   const loginPost = request.method === "POST" && (path === "/login" || Boolean(loginNetwork));
-  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || loginPost;
+  const loginGet = (request.method === "GET" || request.method === "HEAD") && loginPage;
+  const navGet = path === "/api/hub/nav" && (request.method === "GET" || request.method === "HEAD");
+  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || loginPost || loginGet || navGet;
   if (!hubPath) return null;
 
   const headersOf = (sample) => sample.headers;
@@ -307,12 +365,15 @@ export async function handleHub(request, env, ui, ctx) {
 
   try {
     const db = database(env);
+    if (navGet) return await navState(request, db);
     if (path === "/api/hub/applications") return await ingest(request, env, db, json, ctx);
     if (!db) {
+      if (loginGet) return null;
       if (loginPost) return redirect(loginPath({ notice: "unavailable", network: loginNetwork }));
       if (request.method === "GET" || request.method === "HEAD") return unavailable();
       return unavailable();
     }
+    if (loginGet) return await showLogin(request, env, db, url, page, redirect);
     if (loginPost) return await requestLink(request, env, db, redirect, ui, loginNetwork);
     if (path === "/login/verify" && (request.method === "GET" || request.method === "HEAD")) return await verifyLink(request, url, env, db, redirect);
     if (path === "/logout" && request.method === "POST") return await logout(request, env, db, redirect, page);
@@ -350,6 +411,52 @@ async function ingest(request, env, db, json, ctx) {
   ).run();
   scheduleApplicationThankYou(ctx, env, { network: item.network, name: item.name, email: item.email });
   return json({ ok: true, id }, 201);
+}
+
+async function navState(request, db) {
+  let hub = false;
+  if (db && readCookie(request, "wl_session")) {
+    hub = Boolean(await loadSession(db, request));
+  }
+  return new Response(request.method === "HEAD" ? null : JSON.stringify({ hub }), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+async function showLogin(request, env, db, url, page, redirect) {
+  const network = loginNetworkFromUrl(url);
+  const session = await loadSession(db, request);
+  if (session) {
+    const memberships = await approvedNetworks(db, session.email);
+    const isAdmin = adminEmails(env).includes(session.email);
+    if (network) {
+      if (memberships.includes(network)) return redirect(`/hub/${network}`);
+      if (isAdmin) return redirect("/admin");
+    } else if (memberships.length) {
+      return redirect("/hub");
+    } else if (isAdmin) {
+      return redirect("/admin");
+    }
+  }
+  const sent = url.searchParams.get("sent") === "1";
+  const unavailable = url.searchParams.get("notice") === "unavailable";
+  const invalid = url.searchParams.get("notice") === "invalid";
+  const notice = sent
+    ? "If that email is approved, a link is on its way."
+    : unavailable
+      ? "Sign-in is not available yet because the member database is not ready."
+      : invalid
+        ? "That sign-in link is no longer valid. Request a new one."
+        : "";
+  return page(renderLogin({
+    network,
+    notice,
+    next: safeReturnPath(url.searchParams.get("next")),
+  }));
 }
 
 async function requestLink(request, env, db, redirect, ui, network) {
@@ -436,9 +543,9 @@ async function adminRoutes(request, env, db, url, page, redirect) {
   if (path === "/admin/issues" && (request.method === "GET" || request.method === "HEAD")) return listFlagPage(db, session, page);
   const issueMatch = path.match(/^\/admin\/issues\/([0-9a-f-]{36})(\/status|\/files\/([0-9a-f-]{36}))?$/);
   if (issueMatch) return issueAdminRoute(request, env, db, session, issueMatch[1], issueMatch[2] || "", issueMatch[3] || "", url, page, redirect);
-  if (path === "/admin/members" && (request.method === "GET" || request.method === "HEAD")) return listMembers(db, session, page);
-  const memberMatch = path.match(/^\/admin\/members\/([0-9a-f-]{36})(\/notes)?$/);
-  if (memberMatch) return memberRoute(request, db, session, memberMatch[1], memberMatch[2] || "", url, page, redirect);
+  if (path === "/admin/members" && (request.method === "GET" || request.method === "HEAD")) return listMembers(db, session, page, url);
+  const memberMatch = path.match(/^\/admin\/members\/([0-9a-f-]{36})(\/notes|\/edit|\/delete)?$/);
+  if (memberMatch) return memberRoute(request, env, db, session, memberMatch[1], memberMatch[2] || "", url, page, redirect);
   if (path === "/admin/content" && (request.method === "GET" || request.method === "HEAD")) return listContent(db, url, session, page);
   if (path === "/admin/content/new" && (request.method === "GET" || request.method === "HEAD")) {
     const network = ["business", "builders", "tourism"].includes(url.searchParams.get("network")) ? url.searchParams.get("network") : "business";
@@ -651,23 +758,96 @@ async function denyApplication(db, application, reviewer) {
   }
 }
 
-async function listMembers(db, session, page) {
+function removedMemberMessage(url) {
+  const email = normalizeEmail(url.searchParams.get("removed"));
+  if (!isEmail(email)) return "";
+  const mailer = url.searchParams.get("mailer");
+  const mailerLine = mailer === "removed"
+    ? " MailerLite groups were updated."
+    : mailer === "failed"
+      ? " MailerLite could not be updated."
+      : mailer === "skipped"
+        ? " No MailerLite subscriber was found."
+        : mailer === "not_configured"
+          ? " MailerLite is not configured."
+          : "";
+  return `Removed ${email}. Profile, memberships, sign-in sessions, and flagged issues were deleted. Applications were kept and marked denied so they no longer grant membership.${mailerLine}`;
+}
+
+async function listMembers(db, session, page, url) {
   const result = await db.prepare(`SELECT m.id, m.email, m.name, COALESCE(p.name, '') AS profile_name, GROUP_CONCAT(ms.network) AS networks
     FROM members m
     JOIN memberships ms ON ms.member_id = m.id AND ms.status = 'approved'
     LEFT JOIN member_profiles p ON p.member_id = m.id
     GROUP BY m.id, m.email, m.name, p.name
-    ORDER BY lower(COALESCE(NULLIF(p.name, ''), m.name)), m.email`).all();
+    ORDER BY lower(COALESCE(NULLIF(p.name, ''), m.name)), m.email`).bind().all();
   const rows = (result.results || []).map((row) => ({
     id: row.id,
     email: row.email,
     display_name: row.profile_name || row.name || row.email,
     networks: String(row.networks || "").split(",").filter(Boolean).sort(),
   }));
-  return page(renderMembers({ session, rows }));
+  return page(renderMembers({ session, rows, message: url ? removedMemberMessage(url) : "" }));
 }
 
-async function memberRoute(request, db, session, id, action, url, page, redirect) {
+function profileFormInput(form) {
+  return {
+    name: form.get("name"),
+    company: form.get("company"),
+    role_title: form.get("role_title"),
+    phone: form.get("phone"),
+    location: form.get("location"),
+    website: form.get("website"),
+    bio: form.get("bio"),
+  };
+}
+
+function profileFormRows(form) {
+  const ids = form.getAll("field_id").map(String);
+  const labels = form.getAll("field_label").map(String);
+  const values = form.getAll("field_value").map(String);
+  const removed = new Set(form.getAll("field_remove").map(String));
+  return ids.map((fieldId, index) => ({
+    id: fieldId,
+    label: labels[index] || "",
+    value: values[index] || "",
+    remove: removed.has(String(index)),
+  }));
+}
+
+function profileDraft(form, rows) {
+  return {
+    profile: {
+      name: String(form.get("name") || ""),
+      company: String(form.get("company") || ""),
+      role_title: String(form.get("role_title") || ""),
+      phone: String(form.get("phone") || ""),
+      location: String(form.get("location") || ""),
+      website: String(form.get("website") || ""),
+      bio: String(form.get("bio") || ""),
+    },
+    fields: rows.filter((row) => row.label || row.value),
+  };
+}
+
+async function saveMemberProfile(db, memberId, profile, fields) {
+  const now = nowIso();
+  await db.prepare(`INSERT INTO member_profiles (member_id, name, company, role_title, phone, location, website, bio, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(member_id) DO UPDATE SET
+      name = excluded.name, company = excluded.company, role_title = excluded.role_title, phone = excluded.phone,
+      location = excluded.location, website = excluded.website, bio = excluded.bio, updated_at = excluded.updated_at`).bind(
+    memberId, profile.name, profile.company, profile.role_title, profile.phone, profile.location, profile.website, profile.bio, now,
+  ).run();
+  await db.prepare("DELETE FROM member_profile_fields WHERE member_id = ?").bind(memberId).run();
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    await db.prepare(`INSERT INTO member_profile_fields (id, member_id, label, value, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), memberId, field.label, field.value, index, now, now).run();
+  }
+}
+
+async function memberRoute(request, env, db, session, id, action, url, page, redirect) {
   const member = await loadMember(db, id);
   if (!member) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
   if (action === "/notes" && request.method === "POST") {
@@ -681,14 +861,150 @@ async function memberRoute(request, db, session, id, action, url, page, redirect
       ON CONFLICT(member_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`).bind(id, notes, nowIso()).run();
     return redirect(`/admin/members/${id}?saved=1`);
   }
+  if (action === "/edit") return editMember(request, db, session, member, page, redirect);
+  if (action === "/delete") return deleteMember(request, env, db, session, member, page, redirect);
   if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
   const noteRow = await db.prepare("SELECT body FROM member_admin_notes WHERE member_id = ?").bind(id).first();
+  const saved = url.searchParams.get("saved");
+  const message = saved === "1" ? "Notes saved." : saved === "profile" ? "Profile saved." : "";
   return page(renderMemberDetail({
     session,
     ...member,
     notes: noteRow?.body || "",
-    message: url.searchParams.get("saved") === "1" ? "Notes saved." : "",
+    message,
   }));
+}
+
+async function editMember(request, db, session, member, page, redirect) {
+  if (request.method === "POST") {
+    const form = await request.formData();
+    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+    const rows = profileFormRows(form);
+    const parsed = validateProfile(profileFormInput(form), rows);
+    if (parsed.error) {
+      const draft = profileDraft(form, rows);
+      return page(renderMemberEdit({ session, member: member.member, ...draft, message: parsed.error }), 400);
+    }
+    await saveMemberProfile(db, member.member.id, parsed.value.profile, parsed.value.fields);
+    return redirect(`/admin/members/${member.member.id}?saved=profile`);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
+  return page(renderMemberEdit({ session, member: member.member, profile: member.profile, fields: member.fields }));
+}
+
+function ownAdminAccount(env, session, member) {
+  const email = normalizeEmail(member?.email);
+  return Boolean(email) && email === normalizeEmail(session?.email) && adminEmails(env).includes(email);
+}
+
+async function deleteMember(request, env, db, session, loaded, page, redirect) {
+  const member = loaded.member;
+  if (ownAdminAccount(env, session, member)) {
+    return page(renderMessage({ title: "Delete member", message: "You cannot remove your own admin account.", session, admin: true }), 403);
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    return page(renderMemberDelete({ session, member }));
+  }
+  if (request.method !== "POST") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
+  const form = await request.formData();
+  if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+  const typed = normalizeEmail(form.get("confirm_email"));
+  if (typed !== normalizeEmail(member.email)) {
+    return page(renderMemberDelete({ session, member, message: "Type the email address to confirm." }), 400);
+  }
+  const outcome = await removeMemberAccount(env, db, session, loaded);
+  const params = new URLSearchParams({ removed: member.email, mailer: outcome.mailer });
+  return redirect(`/admin/members?${params.toString()}`);
+}
+
+async function memberNetworkIds(db, memberId, email) {
+  const memberships = await db.prepare("SELECT network FROM memberships WHERE member_id = ?").bind(memberId).all();
+  const applications = await db.prepare("SELECT network FROM applications WHERE email = ?").bind(email).all();
+  const ids = new Set();
+  for (const row of [...(memberships.results || []), ...(applications.results || [])]) {
+    if (row.network) ids.add(row.network);
+  }
+  return [...ids];
+}
+
+async function issueFileKeys(db, memberId) {
+  try {
+    const issues = await db.prepare("SELECT id FROM flagged_issues WHERE member_id = ?").bind(memberId).all();
+    const keys = [];
+    for (const issue of issues.results || []) {
+      const files = await db.prepare("SELECT storage_key FROM flagged_issue_files WHERE issue_id = ?").bind(issue.id).all();
+      for (const file of files.results || []) {
+        if (file.storage_key) keys.push(file.storage_key);
+      }
+      await db.prepare("DELETE FROM flagged_issue_files WHERE issue_id = ?").bind(issue.id).run();
+      await db.prepare("DELETE FROM flagged_issues WHERE id = ?").bind(issue.id).run();
+    }
+    return keys;
+  } catch (error) {
+    if (missingTable(error)) return [];
+    throw error;
+  }
+}
+
+async function removeMemberAccount(env, db, session, loaded) {
+  const member = loaded.member;
+  const email = normalizeEmail(member.email);
+  const now = nowIso();
+  const networks = await memberNetworkIds(db, member.id, email);
+  let mailer = { status: "skipped", detail: "No MailerLite groups for this member" };
+  try {
+    mailer = await removeFromMailerLite(env, email, groupIdsForApprovals(env, networks));
+  } catch (error) {
+    logError("mailerlite error", error);
+    mailer = { status: "failed", detail: "MailerLite could not be updated" };
+  }
+  const keys = await issueFileKeys(db, member.id);
+  const approved = await db.prepare("SELECT id FROM applications WHERE email = ? AND status = 'approved'").bind(email).all();
+  await db.prepare("UPDATE applications SET status = 'denied' WHERE email = ? AND status = 'approved'").bind(email).run();
+  try {
+    for (const application of approved.results || []) {
+      await db.prepare(`INSERT INTO application_notes (id, application_id, author_email, body, created_at)
+        VALUES (?, ?, ?, ?, ?)`).bind(
+        crypto.randomUUID(),
+        application.id,
+        session.email,
+        "Member account removed. This application no longer grants membership, so the person can apply again.",
+        now,
+      ).run();
+    }
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
+  await db.prepare("DELETE FROM member_profile_fields WHERE member_id = ?").bind(member.id).run();
+  await db.prepare("DELETE FROM member_profiles WHERE member_id = ?").bind(member.id).run();
+  await db.prepare("DELETE FROM member_admin_notes WHERE member_id = ?").bind(member.id).run();
+  await db.prepare("DELETE FROM memberships WHERE member_id = ?").bind(member.id).run();
+  await db.prepare("DELETE FROM sessions WHERE email = ?").bind(email).run();
+  await db.prepare("DELETE FROM magic_links WHERE email = ?").bind(email).run();
+  await db.prepare("DELETE FROM members WHERE id = ?").bind(member.id).run();
+  const media = env?.HUB_MEDIA;
+  if (keys.length && media && typeof media.delete === "function") {
+    for (const key of keys) {
+      try {
+        await media.delete(key);
+      } catch (error) {
+        logError("flagged issue file delete failed", error);
+      }
+    }
+  } else if (keys.length) {
+    console.error(JSON.stringify({ message: "media binding missing", action: "delete-member", files: keys.length }));
+  }
+  console.log(JSON.stringify({
+    message: "member deleted",
+    member_id: member.id,
+    email,
+    by: session.email,
+    at: now,
+    networks,
+    applications_marked: (approved.results || []).length,
+    mailerlite: mailer.status,
+  }));
+  return { mailer: mailer.status };
 }
 
 async function loadMember(db, id) {
