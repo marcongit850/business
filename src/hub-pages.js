@@ -1,3 +1,4 @@
+import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
 import { escapeHtml, externalUrl, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
 
@@ -69,6 +70,31 @@ const CSS = `
 .hub-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .also-member { color: rgba(0, 24, 64, 0.72); }
 .login-notice { margin: 0 0 18px; }
+.welcome, .flag-issue, .my-issues { max-width: 760px; }
+.welcome {
+  background: #fff; border: 1px solid var(--line); border-top: 4px solid var(--accent, var(--gold));
+  padding: 20px 18px 6px; margin: 0 0 22px;
+}
+.welcome h2 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; margin: 0 0 12px; }
+.welcome p { margin: 0 0 14px; font-size: 17px; line-height: 1.55; overflow-wrap: anywhere; }
+.flag-issue { margin: 0 0 28px; }
+a.flag-button, button.flag-button {
+  display: inline-block; max-width: 100%; background: var(--accent, #d0a040); color: #001840;
+  border: 1px solid var(--accent, #d0a040); text-decoration: none; font-weight: 700; text-align: center;
+}
+.flag-note { margin: 10px 0 0; font-size: 15px; line-height: 1.45; }
+.my-issues { margin: 0 0 28px; }
+.my-issues ul { list-style: none; margin: 0; padding: 0; }
+.my-issue {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between;
+  background: #fff; border: 1px solid var(--line); padding: 12px 14px; margin: 0 0 10px;
+}
+.my-issue-title { font-weight: 700; overflow-wrap: anywhere; }
+.issue-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+@media (max-width: 800px) {
+  .welcome { padding: 16px 14px 2px; }
+  .my-issue { display: grid; }
+}
 @media (min-width: 800px) {
   .grid-2 { grid-template-columns: 1fr 1fr; }
   .field-row { grid-template-columns: 1fr 1.4fr auto; align-items: end; }
@@ -105,7 +131,7 @@ function networkFooter(brand, also) {
 function shell({ title, body, session, admin, network, also, header }) {
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
-  const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
+  const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
   const logout = session
     ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="button secondary" type="submit">Log out</button></form>`
     : "";
@@ -217,7 +243,50 @@ export function renderItemArticle(item) {
   </article>`;
 }
 
-export function renderNetworkHub({ session, admin, network, top, resources, stories, also = [] }) {
+export const WELCOME_COPY = {
+  heading: "Welcome. We're glad you're here.",
+  opening: "We're a brand new organization, and we're working hard to reach our first 500 members. Thank you for being one of them. This is your member hub. As we grow, we'll use it to share updates, resources, and issue pages with members.",
+  networks: {
+    business: "Walton County Business Leaders is here so local owners, operators, and executives have a meaningful voice in the decisions shaping our county's future. We are more than a networking organization. We advocate on taxes, fees, regulations, infrastructure, government spending, and economic development, and we work for a stronger business community and a stronger Walton County.",
+    builders: "Walton County Builders Network gives the professionals who build, develop, sell, improve, and maintain Walton County a unified voice. We support responsible growth and transparent, consistent, and predictable government processes, and we give industry professionals an organized forum to raise concerns and recommend practical improvements.",
+    tourism: "Walton County Tourism Network is an independent advocacy group for businesses that depend on tourism. We promote policies that support a thriving visitor economy, and we advocate for responsible investments, fair regulations, and a strong business environment that benefits residents, visitors, and local businesses alike.",
+  },
+  closingLead: "We'll share current issues, documents, and our positions here as they're ready. In the meantime, two things help a lot:",
+  closing: "We'll share current issues, documents, and our positions here as they're ready. In the meantime, two things help a lot: invite others who belong here, and join the conversation in our Facebook group.",
+};
+
+export const FLAG_PROMPT = "Something the county is doing that affects your business? Tell us.";
+export const FLAG_THANKS = "Thanks, we'll look into it.";
+
+function welcomeSection(network) {
+  const brand = networkById(network);
+  const paragraph = WELCOME_COPY.networks[network];
+  if (!brand || !paragraph) return "";
+  const invite = `<a class="text-link" href="${escapeHtml(brand.join)}">invite others</a>`;
+  const facebook = `<a class="text-link" href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener">our Facebook group</a>`;
+  return `<section class="welcome" aria-labelledby="welcome-heading">
+    <h2 id="welcome-heading">${escapeHtml(WELCOME_COPY.heading)}</h2>
+    <p>${escapeHtml(WELCOME_COPY.opening)}</p>
+    <p>${escapeHtml(paragraph)}</p>
+    <p>${escapeHtml(WELCOME_COPY.closingLead)} ${invite} who belong here, and join the conversation in ${facebook}.</p>
+  </section>`;
+}
+
+function flagSection(network) {
+  return `<section class="flag-issue">
+    <p><a class="button flag-button" href="/hub/${escapeHtml(network)}/flag">Flag an Issue</a></p>
+    <p class="flag-note">${escapeHtml(FLAG_PROMPT)}</p>
+  </section>`;
+}
+
+function memberIssueList(issues) {
+  const rows = (issues || []).length
+    ? issues.map((issue) => `<li class="my-issue"><span class="my-issue-title">${escapeHtml(issue.title)}</span><span class="meta">${escapeHtml(formatWhen(issue.created_at))} · ${escapeHtml(issueStatusLabel(issue.status))}</span></li>`).join("")
+    : `<li class="meta">None yet.</li>`;
+  return `<section class="my-issues"><h2>Issues you've flagged</h2><ul>${rows}</ul></section>`;
+}
+
+export function renderNetworkHub({ session, admin, network, top, resources, stories, also = [], issues = [], flagged = false }) {
   const card = (item, withBody) => `<article class="card">
     ${imageTag(item)}
     <p>${item.pinned ? `<span class="pill">Pinned</span>` : ""}<span class="pill">${escapeHtml(item.type)}</span></p>
@@ -238,6 +307,10 @@ export function renderNetworkHub({ session, admin, network, top, resources, stor
     network,
     also,
     body: `<p class="eyebrow">Member hub</p><h1>${escapeHtml(name)}</h1>
+      ${welcomeSection(network)}
+      ${flagSection(network)}
+      ${flagged ? notice(FLAG_THANKS) : ""}
+      ${memberIssueList(issues)}
       <h2>Announcements</h2>${topHtml}
       <h2>Resources</h2>${resourceHtml}
       <h2>Pages and posts</h2>${storyHtml}`,
@@ -658,6 +731,100 @@ export function renderPreview({ session, item }) {
     session,
     admin: true,
     body: `<div class="preview-banner"><div class="container">${escapeHtml(banner)} <a href="/admin/content/${escapeHtml(item.id)}">Back to editor</a></div></div>${renderItemArticle(item)}`,
+  });
+}
+
+function issueField(label, value) {
+  const text = String(value ?? "").trim();
+  return `<div class="response-item"><dt>${escapeHtml(label)}</dt><dd>${text ? escapeHtml(text) : `<span class="response-empty">Not provided</span>`}</dd></div>`;
+}
+
+export function renderFlagForm({ session, admin, network, also = [], draft = {}, message = "" }) {
+  const brand = networkById(network);
+  const name = brand?.name || networkLabel(network);
+  const checked = draft.contact_ok ? " checked" : "";
+  return shell({
+    title: `Flag an Issue · ${name}`,
+    session,
+    admin,
+    network,
+    also,
+    body: `<p class="eyebrow">${escapeHtml(name)}</p><h1>Flag an Issue</h1>
+      <p class="lede">${escapeHtml(FLAG_PROMPT)}</p>
+      ${notice(message)}
+      <form class="stack" method="post" action="/hub/${escapeHtml(network)}/flag" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+        <label>What's the issue?<input name="title" maxlength="160" required value="${escapeHtml(draft.title || "")}"></label>
+        <label>What's happening?<textarea name="body" maxlength="8000" required>${escapeHtml(draft.body || "")}</textarea></label>
+        <label>Where is it?<input name="where" maxlength="300" value="${escapeHtml(draft.where_text || "")}" placeholder="Address, road, or countywide"></label>
+        <label>Is there a meeting or deadline coming up?<input type="date" name="deadline" value="${escapeHtml(draft.deadline || "")}"></label>
+        <label>Links or documents<input name="link_url" maxlength="500" value="${escapeHtml(draft.link_url || "")}" placeholder="https://example.com" inputmode="url"></label>
+        <label>Files<input type="file" name="files" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.docx,application/pdf,image/jpeg,image/png,image/webp,image/gif,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>
+        <p class="meta">PDF, images, or Word documents. Up to 5 files, 10 MB each.</p>
+        <label>How does it affect you or your business?<textarea name="effect" maxlength="4000">${escapeHtml(draft.effect || "")}</textarea></label>
+        <fieldset class="check-list">
+          <label><input type="checkbox" name="contact_ok" value="1"${checked}> OK to contact me about this</label>
+        </fieldset>
+        <button class="button" type="submit">Send</button>
+      </form>`,
+  });
+}
+
+export function renderFlaggedIssues({ session, rows }) {
+  const bodyRows = rows.length
+    ? rows.map((row) => `<tr>
+        <td><span class="pill">${escapeHtml(networkLabel(row.network))}</span></td>
+        <td>${escapeHtml(row.display_name || "")}<div class="meta">${escapeHtml(row.email || "")}</div></td>
+        <td><a class="text-link" href="/admin/issues/${escapeHtml(row.id)}">${escapeHtml(row.title)}</a></td>
+        <td>${escapeHtml(formatWhen(row.created_at))}</td>
+        <td><span class="pill">${escapeHtml(issueStatusLabel(row.status))}</span></td>
+      </tr>`).join("")
+    : `<tr><td colspan="5">No flagged issues yet.</td></tr>`;
+  return shell({
+    title: "Flagged issues · Walton County Business Leaders",
+    session,
+    admin: true,
+    body: `<p class="eyebrow">Admin</p><h1>Flagged issues</h1>
+      <p class="lede">Issues members sent from their network hub.</p>
+      <table class="hub-table"><thead><tr><th>Network</th><th>Member</th><th>Title</th><th>Date</th><th>Status</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
+  });
+}
+
+export function renderFlaggedIssue({ session, issue, files = [], message = "" }) {
+  const options = ISSUE_STATUSES.map((item) => `<option value="${item.id}"${item.id === issue.status ? " selected" : ""}>${item.label}</option>`).join("");
+  const fileList = files.length
+    ? `<ul>${files.map((file) => `<li><a class="text-link" href="/admin/issues/${escapeHtml(issue.id)}/files/${escapeHtml(file.id)}">${escapeHtml(file.filename)}</a></li>`).join("")}</ul>`
+    : `<p>No files attached.</p>`;
+  const link = safeUrl(issue.link_url);
+  const linkHtml = link
+    ? `<a class="text-link" href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(issue.link_url)}</a>`
+    : `<span class="response-empty">Not provided</span>`;
+  return shell({
+    title: `${issue.title} · Flagged issue`,
+    session,
+    admin: true,
+    body: `<p class="eyebrow">Flagged issue</p><h1>${escapeHtml(issue.title)}</h1>
+      ${notice(message)}
+      <p class="meta"><a class="text-link" href="/admin/issues">All flagged issues</a></p>
+      <p class="app-pills"><span class="pill">${escapeHtml(networkLabel(issue.network))}</span><span class="pill">${escapeHtml(issueStatusLabel(issue.status))}</span></p>
+      <p class="meta">${escapeHtml(issue.display_name || "")} · ${escapeHtml(issue.email || "")}</p>
+      <p class="meta">Flagged ${escapeHtml(formatWhen(issue.created_at))}</p>
+      <form class="filters" method="post" action="/admin/issues/${escapeHtml(issue.id)}/status">
+        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+        <label>Status<select name="status">${options}</select></label>
+        <button class="button" type="submit">Save status</button>
+      </form>
+      <dl class="response-grid">
+        ${issueField("What's the issue?", issue.title)}
+        <div class="response-item response-wide"><dt>What's happening?</dt><dd class="issue-body">${escapeHtml(issue.body || "")}</dd></div>
+        ${issueField("Where is it?", issue.where_text)}
+        ${issueField("Is there a meeting or deadline coming up?", issue.deadline)}
+        <div class="response-item"><dt>Links or documents</dt><dd>${linkHtml}</dd></div>
+        <div class="response-item response-wide"><dt>How does it affect you or your business?</dt><dd class="issue-body">${String(issue.effect || "").trim() ? escapeHtml(issue.effect) : `<span class="response-empty">Not provided</span>`}</dd></div>
+        ${issueField("OK to contact me about this", issue.contact_ok ? "Yes" : "No")}
+      </dl>
+      <h2>Files</h2>
+      ${fileList}`,
   });
 }
 
