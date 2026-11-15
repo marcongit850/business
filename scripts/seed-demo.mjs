@@ -10,6 +10,7 @@ const memberToken = "demo-member-session-token-0123456789abcdef";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 const sql = `
+DELETE FROM application_notes;
 DELETE FROM member_profile_fields;
 DELETE FROM member_profiles;
 DELETE FROM member_admin_notes;
@@ -42,6 +43,9 @@ INSERT INTO applications (id, network, name, email, submitted_at, source_url, fi
 ('22222222-2222-4222-8222-222222222222', 'business', 'Demo Member', 'demo.member@example.com', '2026-11-01T15:00:00.000Z', 'https://waltonleaders.org/join', '{"name":"Demo Member","email":"demo.member@example.com","phone":"850-555-0100","company":"Example Harbor Co","role":"Owner","industry":"Retail","years_in_walton":"8 years","website":"https://example.com","about":"Fake member used for screenshots."}', 'approved', '2026-11-02T15:00:00.000Z', 'marc@whpinc.com', 'not_configured', 'MailerLite not configured', '2026-11-01T15:00:00.000Z'),
 ('33333333-3333-4333-8333-333333333333', 'builders', 'Demo Builder', 'builder@example.com', '2026-11-13T15:00:00.000Z', 'https://waltonbuildersnetwork.org/join', '{"name":"Demo Builder","email":"builder@example.com","trade":"Sample carpentry","phone":"850-555-0188"}', 'pending', NULL, NULL, NULL, NULL, '2026-11-13T15:00:00.000Z'),
 ('44444444-4444-4444-8444-444444444444', 'tourism', 'Demo Visitor', 'visitor@example.com', '2026-11-12T18:00:00.000Z', 'https://waltontourism.org/join', '{"name":"Demo Visitor","email":"visitor@example.com","business":"Example Inn","seasons":"Year round"}', 'pending', NULL, NULL, NULL, NULL, '2026-11-12T18:00:00.000Z');
+
+INSERT INTO application_notes (id, application_id, author_email, body, created_at, copied_at) VALUES
+('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111', 'marc@whpinc.com', 'Demo note on a pending application. Local preview only.', '2026-11-14T16:00:00.000Z', NULL);
 
 INSERT INTO content_items (id, network, type, status, title, slug, body, description, link_url, pinned, image_alt, created_at, updated_at, published_at) VALUES
 ('66666666-6666-4666-8666-666666666666', 'business', 'post', 'draft', 'Draft harbor update', 'draft-harbor-update', 'This draft is only for the admin preview. Members should not see it.', 'A draft post with a featured image.', '', 1, 'Navy and gold sample image', '2026-11-14T12:00:00.000Z', '2026-11-14T12:00:00.000Z', NULL),

@@ -3,8 +3,20 @@ import { readFileSync } from "node:fs";
 import { crc32, deflateSync } from "node:zlib";
 import test from "node:test";
 import { sniffImage, stripImageMetadata } from "../src/images.js";
-import { renderMarkdown } from "../src/text.js";
-import { renderMemberDetail, renderProfile } from "../src/hub-pages.js";
+import {
+  applicationNoteText,
+  buildSignInEmail,
+  externalUrl,
+  loginPath,
+  mergeAdminNotes,
+  phoneDisplay,
+  phoneHref,
+  safeReturnPath,
+  signInDestination,
+  verifyLinkPath,
+  renderMarkdown,
+} from "../src/text.js";
+import { renderApplicationDetail, renderHubHome, renderMemberDetail, renderProfile } from "../src/hub-pages.js";
 import {
   firstPublishedAt,
   groupIdsForApproval,
@@ -125,6 +137,31 @@ test("mailerlite payload is only the subscriber and groups", () => {
   assert.deepEqual(payload.fields, { name: "Ada" });
   assert.equal(JSON.stringify(payload).includes("note"), false);
   assert.deepEqual(groupIdsForApproval({ MAILERLITE_GROUP_MASTER: " 1 ", MAILERLITE_GROUP_BUSINESS_APPROVED: "2" }, "business"), ["1", "2"]);
+  const groups = {
+    MAILERLITE_GROUP_MASTER: "204225136696493336",
+    MAILERLITE_GROUP_BUSINESS: "204225137081320769",
+    MAILERLITE_GROUP_BUILDERS: "204225138229511712",
+    MAILERLITE_GROUP_TOURISM: "204225138526258910",
+    MAILERLITE_GROUP_BUSINESS_APPROVED: "204225138578687754",
+    MAILERLITE_GROUP_BUILDERS_APPROVED: "204225138819860402",
+    MAILERLITE_GROUP_TOURISM_APPROVED: "204225140788037399",
+  };
+  const wrangler = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  for (const [key, value] of Object.entries(groups)) {
+    assert.match(wrangler, new RegExp(`${key} = "${value}"`));
+    assert.equal(wrangler.includes(`${key} = ""`), false);
+  }
+  assert.equal(wrangler.includes("MAILERLITE_API_KEY"), false);
+  assert.deepEqual(groupIdsForApproval(groups, "builders"), [
+    groups.MAILERLITE_GROUP_MASTER,
+    groups.MAILERLITE_GROUP_BUILDERS,
+    groups.MAILERLITE_GROUP_BUILDERS_APPROVED,
+  ]);
+  assert.deepEqual(groupIdsForApproval(groups, "tourism"), [
+    groups.MAILERLITE_GROUP_MASTER,
+    groups.MAILERLITE_GROUP_TOURISM,
+    groups.MAILERLITE_GROUP_TOURISM_APPROVED,
+  ]);
 });
 
 test("published_at is set on the first publish and kept after unpublish", () => {
@@ -165,8 +202,252 @@ test("member queries keep network and published scope", () => {
   assert.match(hub, /WHERE network = \? AND status = 'published'/);
   const profileStart = hub.indexOf("async function profileView");
   const profileEnd = hub.indexOf("async function serveMedia");
+  const memberFacing = hub.slice(hub.indexOf("async function memberRoutes"), profileStart);
   assert.equal(hub.slice(profileStart, profileEnd).includes("member_admin_notes"), false);
+  assert.equal(hub.slice(profileStart, profileEnd).includes("application_notes"), false);
+  assert.equal(memberFacing.includes("application_notes"), false);
   assert.match(hub.slice(hub.indexOf("async function addToMailerLite"), hub.indexOf("function parseFields")), /mailerLitePayload\(email, name, groups\)/);
+  assert.match(hub, /signInDestination\(adminEmails\(env\)\.includes\(row\.email\), next\)/);
+  assert.match(hub, /carryApplicationNotes\(db, application, memberId\)/);
+});
+
+test("application responses use labels, links, and escaped answers", () => {
+  const html = renderApplicationDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf-token" },
+    application: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Ada <Example>",
+      email: "ada@example.com",
+      network: "builders",
+      status: "pending",
+      submitted_at: "2026-11-15T15:24:00.000Z",
+      source_url: "https://waltonbuildersnetwork.org/join",
+      mailerlite_detail: "",
+    },
+    fields: {
+      about: "Line one.\nLine two stays.",
+      website: "",
+      years_in_walton: "60 years",
+      phone: "3058987233",
+      email: "ada@example.com",
+      name: "Ada <Example>",
+      company: "Blue Harbor Builders",
+      role: "Owner",
+      industry: "General residential.",
+      license_no: "CBC <045601>",
+      weird_note: "Kept as typedd",
+    },
+    notes: [{
+      author_email: "marc@whpinc.com",
+      body: "Called <b>twice</b>",
+      created_at: "2026-11-15T15:24:00.000Z",
+    }],
+    noteDraft: "Draft <note>",
+  });
+  assert.match(html, /<h1>Ada &lt;Example&gt;<\/h1>/);
+  assert.equal(html.includes("<Example>"), false);
+  assert.match(html, /pill-pending">Pending</);
+  assert.match(html, />Builders</);
+  assert.match(html, /Submitted Nov 15, 2026, 9:24 AM/);
+  assert.match(html, /href="mailto:ada@example\.com"/);
+  assert.match(html, /<dt>Years in Walton<\/dt>/);
+  assert.equal(html.includes(">years_in_walton<"), false);
+  assert.match(html, /href="tel:\+13058987233"/);
+  assert.match(html, /\(305\) 898-7233/);
+  assert.match(html, /General residential\./);
+  assert.match(html, /class="response-empty">Not provided</);
+  assert.match(html, /response-wide[\s\S]*<dt>About<\/dt><dd>Line one\.\nLine two stays\.<\/dd>/);
+  assert.match(html, /<dt>License No<\/dt><dd>CBC &lt;045601&gt;<\/dd>/);
+  assert.match(html, /Kept as typedd/);
+  assert.match(html, /action="\/admin\/applications\/11111111-1111-4111-8111-111111111111\/approve"/);
+  assert.match(html, /action="\/admin\/applications\/11111111-1111-4111-8111-111111111111\/deny"/);
+  assert.match(html, /action="\/admin\/applications\/11111111-1111-4111-8111-111111111111\/notes"/);
+  assert.match(html, /name="csrf" value="csrf-token"/);
+  assert.match(html, /<button class="button" type="submit">Save<\/button>/);
+  assert.match(html, /Called &lt;b&gt;twice&lt;\/b&gt;/);
+  assert.equal(html.includes("<b>twice</b>"), false);
+  assert.match(html, /Draft &lt;note&gt;/);
+  assert.match(html, /rel="noopener noreferrer"/);
+  assert.match(html, /@media \(min-width: 800px\)[\s\S]*\.response-grid \{ grid-template-columns: 1fr 1fr; \}/);
+  assert.match(html, /\.response-wide \{ grid-column: 1 \/ -1; \}/);
+  const aboutAt = html.indexOf("<dt>About</dt>");
+  const yearsAt = html.indexOf("<dt>Years in Walton</dt>");
+  const extraAt = html.indexOf("<dt>License No</dt>");
+  assert.ok(yearsAt < extraAt && extraAt < aboutAt);
+
+  const linked = renderApplicationDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf-token" },
+    application: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Ada Example",
+      email: "not-an-email",
+      network: "business",
+      status: "approved",
+      submitted_at: "2026-11-15T15:24:00.000Z",
+      source_url: "javascript:alert(1)",
+      reviewed_at: "2026-11-15T16:00:00.000Z",
+      reviewed_by: "marc@whpinc.com",
+    },
+    fields: {
+      phone: "555-0100",
+      website: "blueharbor.example/work",
+      odd_site: "javascript:alert(1)",
+    },
+  });
+  assert.match(linked, /pill-approved">Approved</);
+  assert.match(linked, /Reviewed Nov 15, 2026, 10:00 AM by marc@whpinc\.com/);
+  assert.match(linked, />555-0100</);
+  assert.equal(linked.includes('href="tel:+1555'), false);
+  assert.match(linked, /href="tel:555-0100"/);
+  assert.match(linked, /href="https:\/\/blueharbor\.example\/work"/);
+  assert.match(linked, /rel="noopener noreferrer"/);
+  assert.match(linked, />blueharbor\.example\/work</);
+  assert.equal(linked.includes('href="javascript:'), false);
+  assert.match(linked, /No notes yet/);
+  const waiting = renderApplicationDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf-token" },
+    application: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Ada Example",
+      email: "ada@example.com",
+      network: "business",
+      status: "pending",
+      submitted_at: "2026-11-15T15:24:00.000Z",
+    },
+    fields: { name: "Ada Example" },
+    notesReady: false,
+  });
+  assert.match(waiting, /latest database migration/);
+  assert.equal(waiting.includes('action="/admin/applications/11111111-1111-4111-8111-111111111111/notes"'), false);
+  assert.match(waiting, /action="\/admin\/applications\/11111111-1111-4111-8111-111111111111\/approve"/);
+});
+
+test("member pages escape application notes and keep them off the hub", () => {
+  const detail = renderMemberDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf" },
+    member: { id: "55555555-5555-4555-8555-555555555555", email: "ada@example.com", display_name: "Ada Example", networks: ["builders"] },
+    profile: { name: "Ada Example", company: "", role_title: "", phone: "", location: "", website: "", bio: "" },
+    fields: [],
+    applications: [{
+      id: "11111111-1111-4111-8111-111111111111",
+      network: "builders",
+      status: "approved",
+      submitted_at: "2026-11-15T15:24:00.000Z",
+      fields: { years_in_walton: "4 years", website: "", phone: "8505550199" },
+    }],
+    notes: "Scratchpad",
+    applicationNotes: [{
+      author_email: "marc@whpinc.com",
+      body: "<i>from the application</i>",
+      created_at: "2026-11-15T15:24:00.000Z",
+      network: "builders",
+    }],
+  });
+  assert.match(detail, /From applications/);
+  assert.match(detail, /&lt;i&gt;from the application&lt;\/i&gt;/);
+  assert.equal(detail.includes("<i>from the application</i>"), false);
+  assert.match(detail, /<dt>Years in Walton<\/dt>/);
+  assert.match(detail, /class="response-empty">Not provided</);
+  assert.match(detail, /href="tel:\+18505550199"/);
+  assert.match(detail, /Open application/);
+  const hub = renderHubHome({ session: { email: "ada@example.com", csrf: "csrf" }, admin: false, memberships: ["builders"] });
+  const profile = renderProfile({
+    session: { email: "ada@example.com", csrf: "csrf" },
+    admin: false,
+    profile: { name: "Ada", company: "", role_title: "", phone: "", location: "", website: "", bio: "" },
+    fields: [],
+  });
+  assert.equal(hub.includes("From applications"), false);
+  assert.equal(profile.includes("From applications"), false);
+  assert.equal(profile.includes("from the application"), false);
+});
+
+test("phones, websites, return paths, and note copies stay safe", () => {
+  assert.equal(phoneDisplay("3058987233"), "(305) 898-7233");
+  assert.equal(phoneDisplay("850-555-0199"), "(850) 555-0199");
+  assert.equal(phoneDisplay("555-0100"), "555-0100");
+  assert.equal(phoneDisplay("+1 305 898 7233"), "+1 305 898 7233");
+  assert.equal(phoneHref("3058987233"), "tel:+13058987233");
+  assert.equal(phoneHref("555-0100"), "tel:555-0100");
+  assert.equal(phoneHref("call me"), "");
+  assert.equal(externalUrl("blueharbor.example/work"), "https://blueharbor.example/work");
+  assert.equal(externalUrl("https://example.com/a"), "https://example.com/a");
+  assert.equal(externalUrl("javascript:alert(1)"), "");
+  assert.equal(externalUrl("n/a"), "");
+  assert.equal(externalUrl(""), "");
+  assert.equal(safeReturnPath("/admin?status=pending"), "/admin?status=pending");
+  assert.equal(safeReturnPath("/hub/profile"), "/hub/profile");
+  assert.equal(safeReturnPath("/admin/"), "/admin");
+  assert.equal(safeReturnPath("https://evil.com"), "");
+  assert.equal(safeReturnPath("//evil.com"), "");
+  assert.equal(safeReturnPath("/\\evil.com"), "");
+  assert.equal(safeReturnPath("/admin/../../etc"), "");
+  assert.equal(safeReturnPath("/login"), "");
+  assert.equal(signInDestination(true, ""), "/admin");
+  assert.equal(signInDestination(false, ""), "/hub");
+  assert.equal(signInDestination(true, "/hub/business"), "/hub/business");
+  assert.equal(signInDestination(false, "https://evil.com/admin"), "/hub");
+  assert.equal(signInDestination(true, "/admin?network=builders"), "/admin?network=builders");
+  assert.match(loginPath({ next: "/admin/applications/abc" }), /next=%2Fadmin%2Fapplications%2Fabc/);
+  assert.match(verifyLinkPath("token", "/hub"), /\/login\/verify\?token=token&next=%2Fhub/);
+  assert.equal(verifyLinkPath("token", "https://evil.com"), "/login/verify?token=token");
+  const block = applicationNoteText({
+    author_email: "marc@whpinc.com",
+    body: "Called twice",
+    created_at: "2026-11-15T15:24:00.000Z",
+  }, "builders");
+  assert.match(block, /Nov 15, 2026, 9:24 AM · marc@whpinc\.com · Builders application\nCalled twice/);
+  const merged = mergeAdminNotes("Existing note", [block, block], 10000);
+  assert.equal(merged.body, `Existing note\n\n${block}`);
+  assert.deepEqual(merged.fitted, [0, 1]);
+  const limited = mergeAdminNotes("x".repeat(20), ["y".repeat(20)], 30);
+  assert.equal(limited.changed, false);
+  assert.deepEqual(limited.fitted, []);
+  const migration = readFileSync(new URL("../migrations/0002_application_notes.sql", import.meta.url), "utf8");
+  assert.match(migration, /CREATE TABLE application_notes/);
+  assert.match(migration, /copied_at/);
+  assert.equal(/[—–]/.test(migration), false);
+});
+
+test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
+  const url = "https://waltonleaders.org/login/verify?token=abc&next=/hub";
+  const message = buildSignInEmail("ada@example.com", url);
+  assert.equal(message.from, "hello@waltonleaders.org");
+  assert.equal(message.to, "ada@example.com");
+  assert.match(message.raw, /From: Walton County Business Leaders <hello@waltonleaders\.org>/);
+  assert.match(message.raw, /To: ada@example\.com/);
+  assert.match(message.raw, /Reply-To: hello@waltonleaders\.org/);
+  assert.equal(message.raw.includes("Reply-To: ada@example.com"), false);
+  assert.match(message.raw, /multipart\/alternative/);
+  assert.match(message.raw, /Content-Type: text\/plain; charset=utf-8/);
+  assert.match(message.raw, /Content-Type: text\/html; charset=utf-8/);
+  const [textPart, htmlPart] = message.raw.split("Content-Type: text/html");
+  assert.match(textPart, /https:\/\/waltonleaders\.org\/login\/verify\?token=abc&next=\/hub/);
+  assert.match(htmlPart, /href="https:\/\/waltonleaders\.org\/login\/verify\?token=abc&amp;next=\/hub"/);
+  assert.equal(htmlPart.includes("<script>"), false);
+  assert.equal(/[—–]/.test(message.raw), false);
+
+  const hostile = buildSignInEmail("ada@example.com", "https://waltonleaders.org/x?q=1\"><script>alert(1)</script>");
+  const hostileHtml = hostile.raw.slice(hostile.raw.indexOf("Content-Type: text/html"));
+  assert.equal(hostileHtml.includes("<script>"), false);
+  assert.match(hostileHtml, /&lt;script&gt;/);
+
+  const hub = readFileSync(new URL("../src/hub.js", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const wrangler = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  assert.equal(hub.includes("marc@2911studio.com"), false);
+  assert.equal(hub.includes("VERIFIED_DESTINATION"), false);
+  assert.match(hub, /const FROM = "hello@waltonleaders\.org"/);
+  assert.match(hub, /new EmailMessage\(message\.from, message\.to, message\.raw\)/);
+  assert.match(index, /const FROM = "hello@waltonleaders\.org"/);
+  assert.match(index, /const TO = "marc@whpinc\.com"/);
+  assert.match(index, /Reply-To: " \+ replyTo/);
+  assert.match(wrangler, /allowed_sender_addresses = \["hello@waltonleaders\.org"\]/);
+  assert.equal(wrangler.includes("destination_address"), false);
+  const docs = readFileSync(new URL("../docs/member-hub.md", import.meta.url), "utf8");
+  assert.match(docs, /hello@waltonleaders\.org/);
+  assert.match(docs, /still go to marc@whpinc\.com/);
+  assert.equal(docs.includes("only to marc@whpinc.com"), false);
 });
 
 test("site copy in the hub does not use em or en dashes", () => {

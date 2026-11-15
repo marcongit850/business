@@ -5,10 +5,10 @@ main = "src/index.js"
 compatibility_date = "2026-11-07"
 workers_dev = true
 
-# Sends only to this verified destination. Does not change DNS or Email Routing.
+# From address is onboarded for Email Sending. No destination limit, so members can receive mail.
 [[send_email]]
 name = "EMAIL"
-destination_address = "marc@whpinc.com"
+allowed_sender_addresses = ["hello@waltonleaders.org"]
 
 [observability]
 enabled = true
@@ -31,10 +31,10 @@ bucket_name = "walton-hub-media"
 
 [vars]
 ADMIN_EMAILS = "marc@whpinc.com"
-MAILERLITE_GROUP_MASTER = ""
-MAILERLITE_GROUP_BUSINESS = ""
-MAILERLITE_GROUP_BUILDERS = ""
-MAILERLITE_GROUP_TOURISM = ""
-MAILERLITE_GROUP_BUSINESS_APPROVED = ""
-MAILERLITE_GROUP_BUILDERS_APPROVED = ""
-MAILERLITE_GROUP_TOURISM_APPROVED = ""
+MAILERLITE_GROUP_MASTER = "204225136696493336"
+MAILERLITE_GROUP_BUSINESS = "204225137081320769"
+MAILERLITE_GROUP_BUILDERS = "204225138229511712"
+MAILERLITE_GROUP_TOURISM = "204225138526258910"
+MAILERLITE_GROUP_BUSINESS_APPROVED = "204225138578687754"
+MAILERLITE_GROUP_BUILDERS_APPROVED = "204225138819860402"
+MAILERLITE_GROUP_TOURISM_APPROVED = "204225140788037399"

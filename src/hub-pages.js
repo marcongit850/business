@@ -1,4 +1,4 @@
-import { escapeHtml, formatWhen, networkLabel, renderMarkdown, safeUrl } from "./text.js";
+import { escapeHtml, externalUrl, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
 
 const CSS = `
 .hub-main { padding: 42px 0 88px; }
@@ -23,6 +23,9 @@ const CSS = `
 .card h2, .card h3 { font-size: 32px; line-height: 1.1; margin-bottom: 8px; }
 .meta { color: var(--navy); font-size: 14px; letter-spacing: 0.03em; }
 .pill { display: inline-block; border: 1px solid var(--gold); padding: 2px 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 6px; }
+.pill-pending { background: rgba(208, 160, 64, 0.16); }
+.pill-approved { background: var(--navy); color: var(--cream); border-color: var(--navy); }
+.pill-denied { border-color: rgba(0, 24, 64, 0.25); color: rgba(0, 24, 64, 0.72); }
 .notice { border: 1px solid rgba(208, 160, 64, 0.7); background: #fff; padding: 12px 14px; margin: 0 0 18px; }
 .prose p, .prose ul, .prose ol, .prose blockquote { margin: 0 0 14px; }
 .prose ul, .prose ol { padding-left: 1.2em; }
@@ -31,9 +34,24 @@ const CSS = `
 .grid-2 { display: grid; gap: 18px; }
 .preview-banner { background: var(--navy); color: var(--cream); padding: 10px 0; font-size: 14px; }
 .field-row { display: grid; gap: 8px; grid-template-columns: 1fr; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.app-summary { margin: 0 0 18px; }
+.app-summary .meta, .app-pills { margin: 0 0 8px; }
+.decision-card h2 { font-size: 28px; }
+.decision-card .row-actions { margin: 0; }
+.response-grid { display: grid; grid-template-columns: 1fr; gap: 0 28px; margin: 0; }
+.response-item { min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.response-item dt { margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--navy); }
+.response-item dd { margin: 0; font-size: 17px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.response-empty { color: rgba(0, 24, 64, 0.48); font-style: italic; }
+.note-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
+.note { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--gold); padding: 12px 14px; }
+.note-body { margin: 6px 0 0; white-space: pre-wrap; line-height: 1.5; overflow-wrap: anywhere; }
+.note-heading { margin: 8px 0; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 @media (min-width: 800px) {
   .grid-2 { grid-template-columns: 1fr 1fr; }
   .field-row { grid-template-columns: 1fr 1.4fr auto; align-items: end; }
+  .response-grid { grid-template-columns: 1fr 1fr; }
+  .response-wide { grid-column: 1 / -1; }
 }
 @media (max-width: 800px) {
   .hub-table thead { display: none; }
@@ -181,10 +199,96 @@ export function renderProfile({ session, admin, profile, fields, message }) {
   });
 }
 
+const RESPONSE_LABELS = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  company: "Company",
+  role: "Role",
+  industry: "Industry",
+  years_in_walton: "Years in Walton",
+  website: "Website",
+  about: "About",
+  trade: "Trade",
+  business: "Business",
+  seasons: "Seasons",
+};
+
+const RESPONSE_ORDER = ["name", "email", "phone", "company", "role", "industry", "years_in_walton", "website", "trade", "business", "seasons"];
+
+function responseLabel(key) {
+  if (RESPONSE_LABELS[key]) return RESPONSE_LABELS[key];
+  const words = String(key).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!words) return "Field";
+  return words.split(" ").map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : "")).join(" ");
+}
+
+function orderedResponses(fields) {
+  const entries = Object.entries(fields || {}).filter(([key]) => String(key).trim());
+  const known = [];
+  const extras = [];
+  const about = [];
+  for (const entry of entries) {
+    if (String(entry[0]).toLowerCase() === "about") about.push(entry);
+    else if (RESPONSE_ORDER.includes(entry[0])) known.push(entry);
+    else extras.push(entry);
+  }
+  known.sort((a, b) => RESPONSE_ORDER.indexOf(a[0]) - RESPONSE_ORDER.indexOf(b[0]));
+  return [...known, ...extras, ...about];
+}
+
+function responseValue(key, value) {
+  const original = value == null ? "" : String(value);
+  const trimmed = original.replace(/\r\n/g, "\n").trim();
+  if (!trimmed) return `<span class="response-empty">Not provided</span>`;
+  const lower = String(key).toLowerCase();
+  if (lower === "email") {
+    if (!isEmail(trimmed)) return escapeHtml(trimmed);
+    return `<a class="text-link" href="mailto:${escapeHtml(trimmed)}">${escapeHtml(trimmed)}</a>`;
+  }
+  if (lower === "phone") {
+    const display = phoneDisplay(trimmed);
+    const href = phoneHref(trimmed);
+    if (!href) return escapeHtml(display);
+    return `<a class="text-link" href="${escapeHtml(href)}">${escapeHtml(display)}</a>`;
+  }
+  if (lower === "website") {
+    const href = externalUrl(trimmed);
+    if (!href) return escapeHtml(trimmed);
+    return `<a class="text-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(trimmed)}</a>`;
+  }
+  return escapeHtml(trimmed);
+}
+
 function fieldList(fields) {
-  const entries = Object.entries(fields || {});
+  const entries = orderedResponses(fields);
   if (!entries.length) return "<p>No answers were stored.</p>";
-  return `<dl class="card">${entries.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd style="white-space:pre-wrap">${escapeHtml(value)}</dd>`).join("")}</dl>`;
+  const items = entries.map(([key, value]) => {
+    const wide = String(key).toLowerCase() === "about" ? " response-wide" : "";
+    return `<div class="response-item${wide}"><dt>${escapeHtml(responseLabel(key))}</dt><dd>${responseValue(key, value)}</dd></div>`;
+  }).join("");
+  return `<dl class="card response-grid">${items}</dl>`;
+}
+
+function statusPill(status) {
+  const known = status === "pending" || status === "approved" || status === "denied";
+  const label = status === "pending" ? "Pending" : status === "approved" ? "Approved" : status === "denied" ? "Denied" : String(status || "");
+  const extra = known ? ` pill-${status}` : "";
+  return `<span class="pill${extra}">${escapeHtml(label)}</span>`;
+}
+
+function renderNoteList(notes) {
+  if (!notes?.length) return `<p class="meta">No notes yet.</p>`;
+  return `<ol class="note-list">${notes.map((note) => `<li class="note"><p class="meta">${escapeHtml(formatWhen(note.created_at))} · ${escapeHtml(note.author_email || "")}${note.network ? ` · ${escapeHtml(networkLabel(note.network))}` : ""}</p><p class="note-body">${escapeHtml(note.body || "")}</p></li>`).join("")}</ol>`;
+}
+
+function sourceLine(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const href = safeUrl(raw);
+  const text = escapeHtml(raw);
+  const inner = href ? `<a class="text-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+  return `<p class="meta">Source ${inner}</p>`;
 }
 
 export function renderApplications({ session, network, status, rows, mailerNote }) {
@@ -223,28 +327,51 @@ export function renderApplications({ session, network, status, rows, mailerNote 
   });
 }
 
-export function renderApplicationDetail({ session, application, fields, message }) {
-  const actions = `<form class="row-actions" method="post" action="/admin/applications/${escapeHtml(application.id)}/approve">
+export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true }) {
+  const actions = `<form method="post" action="/admin/applications/${escapeHtml(application.id)}/approve">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
       <button class="button" type="submit">Approve</button>
     </form>
-    <form class="row-actions" method="post" action="/admin/applications/${escapeHtml(application.id)}/deny">
+    <form method="post" action="/admin/applications/${escapeHtml(application.id)}/deny">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
       <button class="button secondary" type="submit">Deny</button>
     </form>`;
+  const network = networkLabel(application.network);
+  const email = String(application.email || "").trim();
+  const emailHtml = isEmail(email)
+    ? `<a class="text-link" href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`
+    : escapeHtml(email);
+  const reviewed = application.reviewed_at
+    ? `<p class="meta">Reviewed ${escapeHtml(formatWhen(application.reviewed_at))}${application.reviewed_by ? ` by ${escapeHtml(application.reviewed_by)}` : ""}</p>`
+    : "";
   return shell({
     title: `${application.name} · Application`,
     session,
     admin: true,
     body: `<p class="eyebrow">Application</p><h1>${escapeHtml(application.name)}</h1>
       ${notice(message)}
-      <p><span class="pill">${escapeHtml(application.status)}</span> <span class="pill">${escapeHtml(networkLabel(application.network))}</span></p>
-      <p class="meta">${escapeHtml(application.email)} · ${escapeHtml(formatWhen(application.submitted_at))}</p>
-      <p class="meta">MailerLite: ${escapeHtml(application.mailerlite_detail || "Not sent yet")}</p>
-      <p>${escapeHtml(application.source_url || "")}</p>
-      <div class="row-actions">${actions}</div>
+      <div class="app-summary">
+        <p class="app-pills">${statusPill(application.status)}${network ? `<span class="pill">${escapeHtml(network)}</span>` : ""}</p>
+        <p class="meta">Submitted ${escapeHtml(formatWhen(application.submitted_at))}</p>
+        <p class="meta">${emailHtml}</p>
+        ${reviewed}
+        <p class="meta">MailerLite: ${escapeHtml(application.mailerlite_detail || "Not sent yet")}</p>
+        ${sourceLine(application.source_url)}
+      </div>
+      <div class="card decision-card">
+        <h2>Review</h2>
+        <div class="row-actions">${actions}</div>
+      </div>
       <h2>Responses</h2>
-      ${fieldList(fields)}`,
+      ${fieldList(fields)}
+      <h2>Private notes</h2>
+      <p class="meta">Only admins can see these notes. Applicants and members never see them. They stay listed on the member page, and approving also adds them to that member's notes.</p>
+      ${notesReady ? `${renderNoteList(notes)}
+      <form class="stack" method="post" action="/admin/applications/${escapeHtml(application.id)}/notes">
+        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+        <label>Add a note<textarea name="note" maxlength="4000" required>${escapeHtml(noteDraft || "")}</textarea></label>
+        <button class="button" type="submit">Save</button>
+      </form>` : `<p class="notice">Application notes need the latest database migration before they can be saved.</p>`}`,
   });
 }
 
@@ -264,10 +391,13 @@ export function renderMembers({ session, rows }) {
   });
 }
 
-export function renderMemberDetail({ session, member, profile, fields, applications, notes, message }) {
+export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message }) {
   const apps = applications.length
-    ? applications.map((application) => `<section class="card"><h3>${escapeHtml(networkLabel(application.network))} · ${escapeHtml(application.status)}</h3><p class="meta">${escapeHtml(formatWhen(application.submitted_at))}</p>${fieldList(application.fields)}</section>`).join("")
+    ? applications.map((application) => `<section class="card"><h3>${escapeHtml(networkLabel(application.network))} · ${escapeHtml(application.status)}</h3><p class="meta">${escapeHtml(formatWhen(application.submitted_at))}</p><p class="meta"><a class="text-link" href="/admin/applications/${escapeHtml(application.id)}">Open application</a></p>${fieldList(application.fields)}</section>`).join("")
     : "<p>No applications are stored for this email.</p>";
+  const carried = applicationNotes.length
+    ? `<p class="note-heading">From applications</p>${renderNoteList(applicationNotes)}`
+    : "";
   const custom = fields.length
     ? `<dl class="card">${fields.map((field) => `<dt>${escapeHtml(field.label)}</dt><dd style="white-space:pre-wrap">${escapeHtml(field.value)}</dd>`).join("")}</dl>`
     : "<p>No custom fields yet.</p>";
@@ -293,9 +423,10 @@ export function renderMemberDetail({ session, member, profile, fields, applicati
       <h2>Applications</h2>${apps}
       <h2>Private notes</h2>
       <p class="meta">Only admins can see this. It is not shown in the member hub and it is not sent to MailerLite.</p>
+      ${carried}
       <form class="stack" method="post" action="/admin/members/${escapeHtml(member.id)}/notes">
         <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
-        <label>Notes<textarea name="notes" maxlength="10000">${escapeHtml(notes || "")}</textarea></label>
+        <label>Member notes<textarea name="notes" maxlength="10000">${escapeHtml(notes || "")}</textarea></label>
         <button class="button" type="submit">Save notes</button>
       </form>`,
   });

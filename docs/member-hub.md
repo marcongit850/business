@@ -24,6 +24,8 @@ Apply the schema to the remote database:
 npx wrangler d1 migrations apply walton-hub --remote
 ```
 
+Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes.
+
 Local preview:
 
 ```bash
@@ -59,7 +61,7 @@ Vars already named in `wrangler.toml`:
 - `MAILERLITE_GROUP_BUILDERS_APPROVED`
 - `MAILERLITE_GROUP_TOURISM_APPROVED`
 
-Put group ids in `wrangler.toml` and deploy. A dashboard-only value can be overwritten by the empty strings in this file on the next build.
+The MailerLite group ids are set in `wrangler.toml`. `MAILERLITE_API_KEY` stays a secret and is not in git.
 
 `ADMIN_EMAILS` is a comma-separated list. It is `marc@whpinc.com` for the current solo admin. There is no password and no broader role editor yet. The `memberships.role` column is there so a later per-network editor grant can be stored without a new table.
 
@@ -81,24 +83,15 @@ For each approved group, add an automation that sends when a subscriber joins th
 
 Deny does not remove someone from MailerLite.
 
-## How sign-in email works today
+## Sign-in email
 
-Join and contact forms already use the `send_email` binding named `EMAIL`. `wrangler.toml` sets `destination_address = "marc@whpinc.com"`, and the from address on those messages is `marc@2911studio.com`. Cloudflare will deliver that binding only to marc@whpinc.com. It cannot mail an arbitrary member.
+Cloudflare Email Sending is onboarded for waltonleaders.org. Portal mail is sent from `Walton County Business Leaders <hello@waltonleaders.org>`.
 
-Magic links reuse that same binding, and only when the approved address is marc@whpinc.com. The login page always answers `If that email is approved, a link is on its way.` Requests are limited to 5 per email and 20 per IP address each hour. Tokens are stored as SHA-256 hashes, expire after 15 minutes, and work once. The session cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
+Join and contact notices still go to marc@whpinc.com. Their Reply-To is the person who wrote in, so that address can be answered directly.
 
-Other approved members can be approved and can be added to MailerLite, but they will not receive the sign-in link until a sender that can reach them is connected.
+Magic links go to the member's own address. `wrangler.toml` sets `allowed_sender_addresses = ["hello@waltonleaders.org"]` and does not set `destination_address`, so the binding can mail any recipient. Reply-To on a sign-in link is hello@waltonleaders.org. The message includes a plain text part and an HTML part.
 
-## What a real transactional sender needs
-
-Do not enable Email Routing for this, and do not invent a from address in the Worker.
-
-To mail sign-in links to members, pick one:
-
-1. Cloudflare Email Sending on a domain the account already controls. Onboard that domain for sending (SPF, DKIM, and DMARC). Arbitrary recipients require Workers Paid. Then change the `send_email` binding so it is allowed to send to members, from an address on that onboarded domain. Keep a separate path, or the same binding if its restriction is lifted, for the existing notices to marc@whpinc.com.
-2. Another transactional email provider. That needs an API secret, a verified sending domain, and a from address chosen in that provider. The Worker would call the provider only after the domain is verified.
-
-Until one of those is in place, leave the binding as it is.
+The login page always answers `If that email is approved, a link is on its way.` Requests are limited to 5 per email and 20 per IP address each hour. Tokens are stored as SHA-256 hashes, expire after 15 minutes, and work once. The session cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
 
 ## Ingest
 
@@ -126,6 +119,5 @@ Header: `X-Hub-Key: <HUB_INGEST_KEY>`
 - Replace the D1 placeholder id, create `walton-hub-media`, and apply migrations on the remote database.
 - Set `HUB_INGEST_KEY` to the same value the Builders and Tourism workers send.
 - Create the MailerLite groups, paste the welcome copy, and set each approved group's from name and from address.
-- Set `MAILERLITE_API_KEY` and the group id vars.
-- Connect a transactional sender before anyone other than marc@whpinc.com can receive a sign-in link.
+- Set `MAILERLITE_API_KEY`. The group ids are already in `wrangler.toml`.
 - In Google Ads, conversion action primary and secondary settings are still changed in the Google Ads interface.

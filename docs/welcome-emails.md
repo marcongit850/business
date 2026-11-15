@@ -2,7 +2,7 @@
 
 Paste one message into each network's automation. The automation should start when someone is added to that network's approved group. Set the from name and from address on the automation in MailerLite. This Worker does not choose a from address.
 
-Do not turn these automations on for members until sign-in links can be delivered to their inboxes. Today the site can email a sign-in link only to marc@whpinc.com. See `docs/member-hub.md`.
+Sign-in links are sent from hello@waltonleaders.org to the address on the application. See `docs/member-hub.md`.
 
 ## Business Leaders approved
 
