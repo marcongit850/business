@@ -19,6 +19,7 @@ import {
   renderPreview,
   renderProfile,
   renderUnavailable,
+  renderWelcome,
 } from "./hub-pages.js";
 import { scheduleApplicationThankYou } from "./application-email.js";
 import {
@@ -643,6 +644,11 @@ function missingTable(error) {
   return /no such table/i.test(message);
 }
 
+function missingColumn(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such column/i.test(message);
+}
+
 async function showApplication(db, session, application, message, noteDraft, status, page) {
   const loaded = await loadApplicationNotes(db, application.id);
   return page(renderApplicationDetail({
@@ -1059,13 +1065,22 @@ async function listContent(db, url, session, page) {
   return page(renderContentList({ session, network, status, rows: result.results || [] }));
 }
 
+async function loadContentItem(db, id) {
+  try {
+    return await db.prepare(`SELECT ${CONTENT_COLUMNS}, share_all FROM content_items WHERE id = ?`).bind(id).first();
+  } catch (error) {
+    if (!missingColumn(error)) throw error;
+    return db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE id = ?`).bind(id).first();
+  }
+}
+
 async function contentRoute(request, env, db, session, id, action, url, page, redirect) {
-  const item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE id = ?`).bind(id).first();
+  const item = await loadContentItem(db, id);
   if (!item) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
   if (action === "/preview" && (request.method === "GET" || request.method === "HEAD")) return page(renderPreview({ session, item }));
   if (request.method === "GET" || request.method === "HEAD") {
     const code = url.searchParams.get("notice");
-    const message = code === "saved" ? "Saved." : code === "image" ? "Image saved." : code === "removed" ? "Image removed." : code === "media" ? "Media storage is not configured." : "";
+    const message = code === "saved" ? "Saved." : code === "image" ? "Image saved." : code === "removed" ? "Image removed." : code === "media" ? "Media storage is not configured." : code === "share" ? "Saved on this network. Show on all networks needs the latest database migration." : "";
     return page(renderContentEditor({ session, item, message }));
   }
   if (request.method !== "POST") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
@@ -1094,6 +1109,7 @@ async function saveContent(request, db, session, existing, page, redirect, exist
     description: String(form.get("description") || ""),
     link_url: String(form.get("link_url") || ""),
     pinned: form.get("pinned") === "1",
+    share_all: form.get("share_all") === "1",
     image_alt: String(form.get("image_alt") || ""),
   });
   const draft = {
@@ -1106,6 +1122,7 @@ async function saveContent(request, db, session, existing, page, redirect, exist
     description: String(form.get("description") || ""),
     link_url: String(form.get("link_url") || ""),
     pinned: form.get("pinned") === "1" ? 1 : 0,
+    share_all: form.get("share_all") === "1" ? 1 : 0,
     image_alt: String(form.get("image_alt") || ""),
   };
   if (parsed.error) return page(renderContentEditor({ session, item: draft, message: parsed.error }), 400);
@@ -1113,18 +1130,36 @@ async function saveContent(request, db, session, existing, page, redirect, exist
   const conflict = await db.prepare("SELECT id FROM content_items WHERE network = ? AND slug = ? AND id != ?").bind(value.network, value.slug, existing?.id || "").first();
   if (conflict) return page(renderContentEditor({ session, item: { ...draft, ...value }, message: "That slug is already used on this network." }), 400);
   const now = nowIso();
+  const shared = value.share_all ? 1 : 0;
   if (!existing) {
     const id = crypto.randomUUID();
-    await db.prepare(`INSERT INTO content_items
-      (id, network, type, status, title, slug, body, description, link_url, pinned, image_alt, created_at, updated_at, published_at)
-      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
-      id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, now,
-    ).run();
-    return redirect(`/admin/content/${id}?notice=saved`);
+    try {
+      await db.prepare(`INSERT INTO content_items
+        (id, network, type, status, title, slug, body, description, link_url, pinned, share_all, image_alt, created_at, updated_at, published_at)
+        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
+        id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, value.image_alt, now, now,
+      ).run();
+      return redirect(`/admin/content/${id}?notice=saved`);
+    } catch (error) {
+      if (!missingColumn(error)) throw error;
+      await db.prepare(`INSERT INTO content_items
+        (id, network, type, status, title, slug, body, description, link_url, pinned, image_alt, created_at, updated_at, published_at)
+        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
+        id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, now,
+      ).run();
+      return redirect(`/admin/content/${id}?notice=share`);
+    }
   }
-  await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, image_alt = ?, updated_at = ?
-    WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, existing.id).run();
-  return redirect(`/admin/content/${existing.id}?notice=saved`);
+  try {
+    await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, share_all = ?, image_alt = ?, updated_at = ?
+      WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, value.image_alt, now, existing.id).run();
+    return redirect(`/admin/content/${existing.id}?notice=saved`);
+  } catch (error) {
+    if (!missingColumn(error)) throw error;
+    await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, image_alt = ?, updated_at = ?
+      WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, existing.id).run();
+    return redirect(`/admin/content/${existing.id}?notice=share`);
+  }
 }
 
 async function setPublishState(db, item, publishing, redirect) {
@@ -1209,28 +1244,51 @@ async function memberRoutes(request, env, db, url, page, redirect) {
   if (slug === "profile") return profileRoute(request, db, session, admin, url, page, redirect, network, also);
   if (slug === "flag") return flagRoute(request, env, db, session, admin, url, page, redirect, network, also);
   if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
+  if (slug === "welcome") return page(renderWelcome({ session, admin, network, also }));
   if (!slug) return networkHome(db, session, admin, network, page, also, url.searchParams.get("flagged") === "1");
-  const item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE network = ? AND slug = ? AND status = 'published'`).bind(network, slug).first();
+  let item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE network = ? AND slug = ? AND status = 'published'`).bind(network, slug).first();
+  if (!item) {
+    try {
+      item = await db.prepare(`SELECT ${CONTENT_COLUMNS}, share_all FROM content_items WHERE share_all = 1 AND slug = ? AND status = 'published'`).bind(slug).first();
+    } catch (error) {
+      if (!missingColumn(error)) throw error;
+    }
+  }
   if (!item) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 404);
-  return page(renderMemberItem({ session, admin, item, also }));
+  return page(renderMemberItem({ session, admin, item, also, network }));
+}
+
+async function listHubPosts(db, network) {
+  const order = "ORDER BY pinned DESC, COALESCE(published_at, updated_at) DESC";
+  try {
+    const result = await db.prepare(`SELECT ${CONTENT_COLUMNS}, share_all FROM content_items
+      WHERE network = ? AND status = 'published' OR share_all = 1 AND status = 'published'
+      ${order}`).bind(network).all();
+    return result.results || [];
+  } catch (error) {
+    if (!missingColumn(error)) throw error;
+    const result = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items
+      WHERE network = ? AND status = 'published'
+      ${order}`).bind(network).all();
+    return result.results || [];
+  }
 }
 
 async function networkHome(db, session, admin, network, page, also, flagged) {
-  const result = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items
-    WHERE network = ? AND status = 'published'
-    ORDER BY pinned DESC, CASE type WHEN 'announcement' THEN 0 ELSE 1 END, COALESCE(published_at, updated_at) DESC`).bind(network).all();
-  const items = result.results || [];
-  const topIds = new Set();
-  const top = [];
-  for (const item of items) {
-    if (item.pinned || item.type === "announcement") {
-      top.push(item);
-      topIds.add(item.id);
-    }
-  }
-  const member = await db.prepare("SELECT id FROM members WHERE email = ?").bind(session.email).first();
+  const posts = await listHubPosts(db, network);
+  const member = await db.prepare("SELECT id, name FROM members WHERE email = ?").bind(session.email).first();
   let issues = [];
+  let profile = { name: "", company: "", role_title: "" };
   if (member) {
+    profile = { name: member.name || "", company: "", role_title: "" };
+    const row = await db.prepare("SELECT name, company, role_title FROM member_profiles WHERE member_id = ?").bind(member.id).first();
+    if (row) {
+      profile = {
+        name: String(row.name || "").trim() || member.name || "",
+        company: row.company || "",
+        role_title: row.role_title || "",
+      };
+    }
     try {
       issues = await listMemberIssues(db, member.id, network);
     } catch (error) {
@@ -1244,9 +1302,8 @@ async function networkHome(db, session, admin, network, page, also, flagged) {
     also,
     flagged,
     issues,
-    top,
-    resources: items.filter((item) => item.type === "resource" && !topIds.has(item.id)),
-    stories: items.filter((item) => (item.type === "post" || item.type === "page") && !topIds.has(item.id)),
+    posts,
+    profile,
   }));
 }
 

@@ -1,3 +1,5 @@
+import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, clipText, postPlainText, postsForHub, welcomeExcerpt, welcomeHeading } from "./hub-copy.js";
+import { HUB_HOME_CSS } from "./hub-home-css.js";
 import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
 import { escapeHtml, externalUrl, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
@@ -152,15 +154,14 @@ function alsoLine(also) {
   return `<p class="also-member">${sentence}.</p>`;
 }
 
-function networkFooter(brand, also) {
+function networkFooter(brand) {
   if (!brand) return "";
   return `<footer class="hub-foot">
     <p class="hub-links"><a href="${escapeHtml(brand.site)}">${escapeHtml(brand.siteLabel)}</a><a href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener noreferrer">Facebook group</a></p>
-    ${alsoLine(also)}
   </footer>`;
 }
 
-function shell({ title, body, session, admin, network, also, header, mainClass = "" }) {
+function shell({ title, body, session, admin, network, also, header, mainClass = "", bare = false }) {
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
   const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
@@ -176,8 +177,11 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
         <img class="${brand.mark}" src="${brand.logo}" alt="" width="42" height="42">
         <div class="brand-name"><span>${escapeHtml(brand.kicker)}</span>${escapeHtml(brand.title)}</div>
       </a>`;
+    const signOut = session
+      ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="sign-out" type="submit">Sign out</button></form>`
+      : "";
     links = session
-      ? `<a href="/hub/${brand.id}">Hub</a><a href="/hub/${brand.id}/profile">Profile</a>${adminLinks}${logout}`
+      ? `<a class="hub-label" href="/hub/${brand.id}">Member Hub</a><a class="header-link" href="/hub/${brand.id}/profile">Profile</a>${adminLinks}${signOut}`
       : "";
   } else if (mode === "admin") {
     brandHtml = `<a class="brand" href="/" aria-label="Walton County Business Leaders home">
@@ -194,6 +198,10 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
     links = session ? `${adminLinks}${logout}` : `<a href="/login">Login</a>`;
   }
   const accent = brand ? ` style="--accent:${brand.accent}" data-network="${brand.id}"` : "";
+  const switchLine = mode === "network" ? alsoLine(also) : "";
+  const main = bare
+    ? body
+    : `<main id="content" class="container hub-main${mainClass ? ` ${mainClass}` : ""}">${body}${mode === "network" ? networkFooter(brand) : ""}</main>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -204,7 +212,7 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
   <meta name="theme-color" content="#f6f3ec">
   <link rel="icon" href="/favicon.png" type="image/png">
   <link rel="stylesheet" href="/styles.css">
-  <style>${CSS}</style>
+  <style>${CSS}${HUB_HOME_CSS}</style>
 </head>
 <body${accent}>
   <a class="skip-link" href="#content">Skip to content</a>
@@ -213,8 +221,9 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
       ${brandHtml}
       <nav class="hub-nav" aria-label="Account">${links}</nav>
     </div>
+    ${switchLine ? `<div class="container header-also">${switchLine}</div>` : ""}
   </header>
-  <main id="content" class="container hub-main${mainClass ? ` ${mainClass}` : ""}">${body}${mode === "network" ? networkFooter(brand, also) : ""}</main>
+  ${main}
 </body>
 </html>`;
 }
@@ -264,7 +273,7 @@ function imageTag(item) {
 export function renderItemArticle(item) {
   const link = safeUrl(item.link_url);
   const networkName = networkById(item.network)?.name || networkLabel(item.network);
-  return `<article class="card">
+  return `<article class="card post-read">
     <p class="eyebrow">${escapeHtml(networkName)} · ${escapeHtml(item.type)}</p>
     <h1>${escapeHtml(item.title)}</h1>
     <p class="meta">${item.published_at ? `Published ${escapeHtml(formatWhen(item.published_at))}` : "Draft"}</p>
@@ -304,60 +313,225 @@ function welcomeSection(network) {
   </section>`;
 }
 
-function flagSection(network) {
-  return `<section class="flag-issue">
-    <p><a class="button flag-button" href="/hub/${escapeHtml(network)}/flag">Flag an Issue</a></p>
-    <p class="flag-note">${escapeHtml(FLAG_PROMPT)}</p>
+const FLAG_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>`;
+const INVITE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M4 19c.3-2.8 2.4-4.4 5-4.4s4.7 1.6 5 4.4"/><path d="M17 8v6M14 11h6"/></svg>`;
+const FACEBOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M14 13.5h2.75l.42-2.88H14V8.79c0-.79.22-1.33 1.35-1.33H17.5V4.82A18.3 18.3 0 0 0 14.86 4C12.15 4 10.25 5.66 10.25 8.45v2.17H7.5v2.88h2.75V20h3.75z"/></svg>`;
+
+function actionCard({ href, title, body, icon, primary = false, external = false }) {
+  const extra = external ? ` target="_blank" rel="noopener noreferrer"` : "";
+  const klass = primary ? "action-card primary" : "action-card";
+  return `<a class="${klass}" href="${escapeHtml(href)}"${extra}>
+    <span class="action-icon">${icon}</span>
+    <h2>${escapeHtml(title)}</h2>
+    <p>${escapeHtml(body)}</p>
+  </a>`;
+}
+
+function prioritySection(network) {
+  const block = HUB_PRIORITIES[network];
+  if (!block?.items?.length) return "";
+  const items = block.items.map(([title, body], index) => `<li class="priority">
+    <span class="priority-num" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+    <div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></div>
+  </li>`).join("");
+  return `<section aria-labelledby="priorities-heading">
+    <div class="section-heading">
+      <p class="eyebrow">What we stand for</p>
+      <h2 id="priorities-heading">What we're working on</h2>
+      <p class="section-note">${escapeHtml(block.note)}</p>
+    </div>
+    <ol class="priority-list">${items}</ol>
   </section>`;
 }
 
-function memberIssueList(issues) {
-  const rows = (issues || []).length
-    ? issues.map((issue) => `<li class="my-issue"><span class="my-issue-title">${escapeHtml(issue.title)}</span><span class="meta">${escapeHtml(formatWhen(issue.created_at))} · ${escapeHtml(issueStatusLabel(issue.status))}</span></li>`).join("")
-    : `<li class="meta">None yet.</li>`;
-  return `<section class="my-issues"><h2>Issues you've flagged</h2><ul>${rows}</ul></section>`;
+function postIsLong(item) {
+  const body = String(item.body || "");
+  const plain = postPlainText(body);
+  const description = String(item.description || "").trim();
+  return plain.length > 280 || description.length > 280 || body.split("\n").filter((line) => line.trim()).length > 8;
 }
 
-export function renderNetworkHub({ session, admin, network, top, resources, stories, also = [], issues = [], flagged = false }) {
-  const card = (item, withBody) => `<article class="card">
+function latestCard(item, network) {
+  const href = `/hub/${escapeHtml(network)}/${escapeHtml(item.slug)}`;
+  const long = postIsLong(item);
+  const plain = postPlainText(item.description || item.body || "");
+  const excerpt = clipText(plain, 280);
+  const link = safeUrl(item.link_url);
+  const bodyHtml = long
+    ? `${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}<a class="text-link" href="${href}">Read more</a>`
+    : `${item.description ? `<p class="excerpt">${escapeHtml(item.description)}</p>` : ""}<div class="prose">${renderMarkdown(item.body || "")}</div>${link ? `<p><a class="text-link" href="${escapeHtml(link)}" rel="noopener noreferrer">Open resource</a></p>` : ""}`;
+  return `<article class="post-card">
     ${imageTag(item)}
-    <p>${item.pinned ? `<span class="pill">Pinned</span>` : ""}<span class="pill">${escapeHtml(item.type)}</span></p>
-    <h2><a href="/hub/${escapeHtml(network)}/${escapeHtml(item.slug)}">${escapeHtml(item.title)}</a></h2>
-    ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
-    ${withBody ? `<div class="prose">${renderMarkdown(item.body || "")}</div>` : ""}
-    ${safeUrl(item.link_url) ? `<p><a class="text-link" href="${escapeHtml(safeUrl(item.link_url))}" rel="noopener noreferrer">Open resource</a></p>` : ""}
+    <p class="meta">${item.pinned ? `<span class="pill">Pinned</span>` : ""}${item.published_at ? escapeHtml(formatWhen(item.published_at)) : ""}</p>
+    <h3><a href="${href}">${escapeHtml(item.title)}</a></h3>
+    ${bodyHtml}
   </article>`;
-  const topHtml = top.length ? top.map((item) => card(item, item.type === "announcement")).join("") : `<p>No announcements yet.</p>`;
-  const resourceHtml = resources.length ? resources.map((item) => card(item, false)).join("") : `<p>No resources yet.</p>`;
-  const storyHtml = stories.length ? stories.map((item) => card(item, false)).join("") : `<p>No pages or posts yet.</p>`;
+}
+
+function welcomeCard(network) {
+  const brand = networkById(network);
+  const paragraph = WELCOME_COPY.networks[network];
+  if (!brand || !paragraph) return "";
+  const excerpt = welcomeExcerpt(paragraph);
+  return `<article class="post-card">
+    <h3><a href="/hub/${escapeHtml(network)}/welcome">Welcome from ${escapeHtml(brand.name)}</a></h3>
+    <p class="excerpt">${escapeHtml(excerpt)}</p>
+    <a class="text-link" href="/hub/${escapeHtml(network)}/welcome">Read more</a>
+  </article>`;
+}
+
+function latestSection(network, posts) {
+  const cards = posts.map((item) => latestCard(item, network)).join("");
+  const welcome = welcomeCard(network);
+  if (!cards && !welcome) return "";
+  return `<section class="latest" aria-labelledby="latest-heading">
+    <div class="section-heading">
+      <p class="eyebrow">Pages and posts</p>
+      <h2 id="latest-heading">Latest</h2>
+    </div>
+    ${cards}${welcome}
+  </section>`;
+}
+
+function issueSidebar(network, issues) {
+  const rows = (issues || []).length
+    ? `<ul class="issue-list">${issues.map((issue) => `<li><span class="my-issue-title">${escapeHtml(issue.title)}</span><span class="meta">${escapeHtml(formatWhen(issue.created_at))} · ${escapeHtml(issueStatusLabel(issue.status))}</span></li>`).join("")}</ul>`
+    : `<p class="empty-state">None yet</p>`;
+  return `<section class="side-panel">
+    <h2>Your flagged issues</h2>
+    ${rows}
+    <a class="text-link" href="/hub/${escapeHtml(network)}/flag">${escapeHtml(ACTION_COPY.flagLink)}</a>
+  </section>`;
+}
+
+function profileSidebar(network, profile) {
+  const name = String(profile?.name || "").trim();
+  const company = String(profile?.company || "").trim() || String(profile?.role_title || "").trim();
+  return `<section class="side-panel">
+    <h2>Your profile</h2>
+    ${name ? `<p class="profile-name">${escapeHtml(name)}</p>` : ""}
+    ${company ? `<p class="profile-company">${escapeHtml(company)}</p>` : ""}
+    <a class="text-link" href="/hub/${escapeHtml(network)}/profile">Edit profile</a>
+  </section>`;
+}
+
+function contactDialog() {
+  return `<div id="contact-dialog" class="contact-dialog" popover>
+    <div class="contact-dialog-inner">
+      <div class="contact-dialog-head">
+        <div>
+          <p class="eyebrow">Get in touch</p>
+          <h2>Contact us</h2>
+        </div>
+        <button type="button" class="contact-close" popovertarget="contact-dialog" popovertargetaction="hide">Close</button>
+      </div>
+      <p>Have a question or want to learn more? Send us a message.</p>
+      <form class="contact-form" action="/contact" method="post">
+        <label>Name<input type="text" name="name" required autocomplete="name"></label>
+        <label>Email<input type="email" name="email" required autocomplete="email"></label>
+        <label class="hp-field" aria-hidden="true">Company<input type="text" name="company_fax" tabindex="-1" autocomplete="off"></label>
+        <label>Message<textarea name="message" rows="5" required></textarea></label>
+        <button class="button" type="submit">Send message</button>
+      </form>
+    </div>
+  </div>`;
+}
+
+function memberFooter(brand) {
+  if (!brand) return "";
+  const block = HUB_PRIORITIES[brand.id];
+  if (!block?.tagline) return "";
+  return `<footer class="footer member-footer">
+    <div class="container">
+      <div class="footer-top">
+        <p class="closing">${escapeHtml(block.tagline)}</p>
+        <button type="button" class="button" popovertarget="contact-dialog">Contact</button>
+      </div>
+      ${contactDialog()}
+      <div class="footer-bottom">
+        <span><a href="${escapeHtml(brand.site)}">${escapeHtml(brand.name)}</a> · Walton County, Florida</span>
+        <a class="footer-social" href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(brand.name)} Facebook group">${FACEBOOK_ICON}</a>
+      </div>
+    </div>
+  </footer>`;
+}
+
+export function renderWelcome({ session, admin, network, also = [] }) {
   const brand = networkById(network);
   const name = brand?.name || networkLabel(network);
+  return shell({
+    title: `Welcome from ${name}`,
+    session,
+    admin,
+    network,
+    also,
+    body: `${welcomeSection(network)}<p><a class="text-link" href="/hub/${escapeHtml(network)}">Back to the hub</a></p>`,
+  });
+}
+
+export function renderNetworkHub({ session, admin, network, top = [], resources = [], stories = [], posts, also = [], issues = [], flagged = false, profile = {} }) {
+  const brand = networkById(network);
+  const name = brand?.name || networkLabel(network);
+  const source = Array.isArray(posts) ? posts : [...top, ...resources, ...stories];
+  const visible = postsForHub(source, network);
+  const displayName = String(profile.name || "").trim();
+  const priorities = prioritySection(network);
+  const latest = latestSection(network, visible);
   return shell({
     title: `${name} hub`,
     session,
     admin,
     network,
     also,
-    body: `<p class="eyebrow">Member hub</p><h1>${escapeHtml(name)}</h1>
-      ${welcomeSection(network)}
-      ${flagSection(network)}
-      ${flagged ? notice(FLAG_THANKS) : ""}
-      ${memberIssueList(issues)}
-      <h2>Announcements</h2>${topHtml}
-      <h2>Resources</h2>${resourceHtml}
-      <h2>Pages and posts</h2>${storyHtml}`,
+    bare: true,
+    body: `<div class="member-home" id="content">
+      <section class="hub-hero">
+        <div class="hub-hero-photo" style="background-image:url('${HERO_PHOTO}')" role="img" aria-label="South Walton shoreline at sunset"></div>
+        <div class="hub-hero-overlay"></div>
+        <div class="container hub-hero-inner">
+          <div class="hub-hero-copy">
+            <p class="eyebrow">Member Hub</p>
+            <h1>${escapeHtml(welcomeHeading(displayName))}</h1>
+            <p class="hub-hero-sub">${escapeHtml(HERO_LINE)}</p>
+          </div>
+          ${brand ? `<img class="hub-hero-seal ${brand.mark}" src="${brand.logo}" alt="${escapeHtml(brand.name)} logo" width="168" height="168">` : ""}
+        </div>
+      </section>
+      <div class="container actions-wrap">
+        <div class="action-grid">
+          ${actionCard({ href: `/hub/${network}/flag`, title: ACTION_COPY.flagTitle, body: FLAG_PROMPT, icon: FLAG_ICON, primary: true })}
+          ${brand ? actionCard({ href: brand.join, title: ACTION_COPY.inviteTitle, body: ACTION_COPY.inviteBody, icon: INVITE_ICON }) : ""}
+          ${brand ? actionCard({ href: brand.facebook, title: ACTION_COPY.facebookTitle, body: ACTION_COPY.facebookBody, icon: FACEBOOK_ICON, external: true }) : ""}
+        </div>
+      </div>
+      <div class="member-main">
+        <div class="container hub-layout">
+          <div class="hub-col">
+            ${flagged ? notice(FLAG_THANKS) : ""}
+            ${priorities}
+            ${latest}
+          </div>
+          <aside class="side-stack">
+            ${issueSidebar(network, issues)}
+            ${profileSidebar(network, profile)}
+          </aside>
+        </div>
+      </div>
+      ${memberFooter(brand)}
+    </div>`,
   });
 }
 
-export function renderMemberItem({ session, admin, item, also = [] }) {
-  const name = networkById(item.network)?.name || "";
+export function renderMemberItem({ session, admin, item, also = [], network }) {
+  const shown = network || item.network;
+  const name = networkById(shown)?.name || networkById(item.network)?.name || "";
   return shell({
     title: name ? `${item.title} · ${name}` : item.title,
     session,
     admin,
-    network: item.network,
+    network: shown,
     also,
-    body: renderItemArticle(item),
+    body: `<p><a class="text-link" href="/hub/${escapeHtml(shown)}">Back to the hub</a></p>${renderItemArticle(item)}`,
   });
 }
 
@@ -902,6 +1076,8 @@ export function renderContentEditor({ session, item, message }) {
         <label>Body<textarea name="body" maxlength="20000">${escapeHtml(item.body || "")}</textarea></label>
         <p class="meta">Write plain text or Markdown. Raw HTML is shown as text, not run.</p>
         <label>Pin this item<input type="checkbox" name="pinned" value="1"${item.pinned ? " checked" : ""}></label>
+        <label>Show on all networks<input type="checkbox" name="share_all" value="1"${item.share_all ? " checked" : ""}></label>
+        <p class="meta">Checked items appear in Latest for every network. Leave it unchecked to keep this item on the network above.</p>
         <label>Image description<input name="image_alt" maxlength="180" value="${escapeHtml(item.image_alt || "")}"></label>
         <button class="button" type="submit">${isNew ? "Save draft" : "Save"}</button>
       </form>

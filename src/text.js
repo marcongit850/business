@@ -20,6 +20,14 @@ export function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
+export function safeImageSrc(value) {
+  const href = safeUrl(value);
+  if (href) return href;
+  const raw = String(value ?? "").trim();
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\") || raw.includes("..") || /[\s<>"']/.test(raw)) return "";
+  return raw;
+}
+
 export function safeUrl(value) {
   const raw = String(value ?? "").trim();
   if (!raw || raw.length > 500 || /[\s<>"']/.test(raw)) return "";
@@ -259,6 +267,15 @@ export function renderMarkdown(source) {
     const line = lines[i];
     if (!line.trim()) {
       flush();
+      i += 1;
+      continue;
+    }
+    const image = /^!\[([^\]]*)\]\((.+)\)$/.exec(line.trim());
+    if (image) {
+      flush();
+      const href = safeImageSrc(image[2].trim());
+      if (href) out.push(`<p><img class="prose-img" src="${escapeHtml(href)}" alt="${escapeHtml(image[1])}"></p>`);
+      else out.push(`<p>${escapeHtml(image[1] || "Image")}</p>`);
       i += 1;
       continue;
     }

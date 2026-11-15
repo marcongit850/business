@@ -24,7 +24,7 @@ Apply the schema to the remote database:
 npx wrangler d1 migrations apply walton-hub --remote
 ```
 
-Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes. `migrations/0003_flagged_issues.sql` adds flagged issues and their file records. Apply it before members use Flag an Issue. The hub still loads without it. Saving an issue then says the migration is needed.
+Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes. `migrations/0003_flagged_issues.sql` adds flagged issues and their file records. Apply it before members use Flag an Issue. The hub still loads without it. Saving an issue then says the migration is needed. `migrations/0004_content_share_all.sql` adds a checkbox so one published item can show in Latest on every network. Without it, items still publish on the network they were saved for, and the editor says the migration is needed if that box was checked.
 
 Local preview:
 

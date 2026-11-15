@@ -1,6 +1,7 @@
 import { EmailMessage } from "cloudflare:email";
 import { handleHub, recordBusinessApplication } from "./hub.js";
 import { renderLogin } from "./hub-pages.js";
+import { hubHero } from "./hub-hero.js";
 import { networkLogo } from "./network-logos.js";
 import { loginNetworkFromUrl } from "./networks.js";
 import { safeReturnPath } from "./text.js";
@@ -231,7 +232,7 @@ export default {
       return html(request.method === "HEAD" ? null : page);
     }
 
-    const logo = networkLogo(path);
+    const logo = networkLogo(path) || hubHero(path);
     if (logo) {
       return new Response(request.method === "HEAD" ? null : logo.bytes, {
         headers: { ...HEADERS, "Content-Type": logo.type, "Cache-Control": "public, max-age=86400" },

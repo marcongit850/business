@@ -339,7 +339,7 @@ test("flag form and admin detail escape answers and keep the network brand", () 
     issues: [{ id: "1", title: "My fee issue", status: "action", created_at: "2026-11-15T15:24:00.000Z" }],
     flagged: true,
   });
-  assert.match(hub, /Issues you've flagged/);
+  assert.match(hub, /Your flagged issues/);
   assert.match(hub, /My fee issue/);
   assert.match(hub, /Taking action/);
   assert.match(hub, /Thanks, we&#39;ll look into it\./);
