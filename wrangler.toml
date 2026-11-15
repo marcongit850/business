@@ -19,3 +19,28 @@ head_sampling_rate = 1
 [observability.traces]
 enabled = true
 head_sampling_rate = 1
+
+# PLACEHOLDER database_id. Create the database and replace this id before merge.
+# `npx wrangler deploy` rejects an id that does not exist in the account.
+# Runtime still shows a clear message if this binding is missing or migrations
+# have not been applied.
+[[d1_databases]]
+binding = "DB"
+database_name = "walton-hub"
+database_id = "00000000-0000-4000-8000-000000000000"
+
+# PLACEHOLDER bucket. Create it before merge. Objects stay private and are
+# served only by this Worker after an authorization check.
+[[r2_buckets]]
+binding = "HUB_MEDIA"
+bucket_name = "walton-hub-media"
+
+[vars]
+ADMIN_EMAILS = "marc@whpinc.com"
+MAILERLITE_GROUP_MASTER = ""
+MAILERLITE_GROUP_BUSINESS = ""
+MAILERLITE_GROUP_BUILDERS = ""
+MAILERLITE_GROUP_TOURISM = ""
+MAILERLITE_GROUP_BUSINESS_APPROVED = ""
+MAILERLITE_GROUP_BUILDERS_APPROVED = ""
+MAILERLITE_GROUP_TOURISM_APPROVED = ""
