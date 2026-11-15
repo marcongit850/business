@@ -142,6 +142,23 @@ export function groupIdsForApprovals(env, networks) {
   return ids;
 }
 
+export function groupIdsForRemoval(env, network) {
+  if (!NETWORKS.includes(network)) return [];
+  const suffix = network.toUpperCase();
+  const names = [`MAILERLITE_GROUP_${suffix}`, `MAILERLITE_GROUP_${suffix}_APPROVED`];
+  return names.map((name) => String(env?.[name] ?? "").trim()).filter(Boolean);
+}
+
+export function groupIdsForRemovals(env, networks) {
+  const ids = [];
+  for (const network of networks || []) {
+    for (const id of groupIdsForRemoval(env, network)) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export function mailerLitePayload(email, name, groupIds) {
   const payload = {
     email,
