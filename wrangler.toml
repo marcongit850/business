@@ -5,10 +5,17 @@ main = "src/index.js"
 compatibility_date = "2026-11-07"
 workers_dev = true
 
-# Sends only to this verified destination. Does not change DNS or Email Routing.
+# Applicant thank-you mail is sent from each network hello@ address.
+# Notices to marc@whpinc.com still use this binding, from marc@2911studio.com.
+# Does not change DNS or Email Routing.
 [[send_email]]
 name = "EMAIL"
-destination_address = "marc@whpinc.com"
+allowed_sender_addresses = [
+  "hello@waltonleaders.org",
+  "hello@waltonbuildersnetwork.org",
+  "hello@waltontourism.org",
+  "marc@2911studio.com",
+]
 
 [observability]
 enabled = true

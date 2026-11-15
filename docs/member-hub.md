@@ -77,13 +77,15 @@ In MailerLite, create these groups:
 
 Copy each group's id into the matching var. On approval the Worker adds the person to the account (the single subscriber list), the master group, that network's group, and that network's approved group. One person can be in several. Approval still completes if `MAILERLITE_API_KEY` is missing, and the application page says `MailerLite not configured`.
 
-For each approved group, add an automation that sends when a subscriber joins the group. Set that automation's from name and from address in MailerLite. Paste the matching message from `docs/welcome-emails.md`. The Worker never picks a from address.
+For each approved group, add an automation that sends when a subscriber joins the group. Set that automation's from name and from address in MailerLite. Paste the matching approval message from `docs/welcome-emails.md`. The Worker does not choose a from address for these MailerLite messages.
 
 Deny does not remove someone from MailerLite.
 
 ## How sign-in email works today
 
-Join and contact forms already use the `send_email` binding named `EMAIL`. `wrangler.toml` sets `destination_address = "marc@whpinc.com"`, and the from address on those messages is `marc@2911studio.com`. Cloudflare will deliver that binding only to marc@whpinc.com. It cannot mail an arbitrary member.
+Join and contact forms use the `send_email` binding named `EMAIL` to notify marc@whpinc.com. The from address on those messages is `marc@2911studio.com`.
+
+The same binding sends the application thank-you. `allowed_sender_addresses` includes hello@waltonleaders.org, hello@waltonbuildersnetwork.org, hello@waltontourism.org, and marc@2911studio.com. The studio address stays allowed so the existing notices keep their from address. See `docs/welcome-emails.md`.
 
 Magic links reuse that same binding, and only when the approved address is marc@whpinc.com. The login page always answers `If that email is approved, a link is on its way.` Requests are limited to 5 per email and 20 per IP address each hour. Tokens are stored as SHA-256 hashes, expire after 15 minutes, and work once. The session cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
 
@@ -98,7 +100,7 @@ To mail sign-in links to members, pick one:
 1. Cloudflare Email Sending on a domain the account already controls. Onboard that domain for sending (SPF, DKIM, and DMARC). Arbitrary recipients require Workers Paid. Then change the `send_email` binding so it is allowed to send to members, from an address on that onboarded domain. Keep a separate path, or the same binding if its restriction is lifted, for the existing notices to marc@whpinc.com.
 2. Another transactional email provider. That needs an API secret, a verified sending domain, and a from address chosen in that provider. The Worker would call the provider only after the domain is verified.
 
-Until one of those is in place, leave the binding as it is.
+Application thank-you mail already uses this binding from the hello@ addresses. Sign-in links are still sent only to marc@whpinc.com, from marc@2911studio.com.
 
 ## Ingest
 

@@ -170,7 +170,7 @@ test("member queries keep network and published scope", () => {
 });
 
 test("site copy in the hub does not use em or en dashes", () => {
-  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
+  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../src/application-email.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
     const text = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.equal(/[—–]/.test(text), false, file);
   }
