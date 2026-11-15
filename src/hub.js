@@ -5,7 +5,6 @@ import {
   renderApplications,
   renderContentEditor,
   renderContentList,
-  renderHubHome,
   renderMemberDetail,
   renderMemberItem,
   renderMembers,
@@ -15,10 +14,12 @@ import {
   renderProfile,
   renderUnavailable,
 } from "./hub-pages.js";
+import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
 import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
 import {
+  approvalNetworks,
   firstPublishedAt,
-  groupIdsForApproval,
+  groupIdsForApprovals,
   mailerLitePayload,
   normalizeEmail,
   validateContent,
@@ -27,7 +28,6 @@ import {
 } from "./validate.js";
 
 const FROM = "hello@waltonleaders.org";
-const FROM_NAME = "Walton County Business Leaders";
 const MAGIC_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const WINDOW_MS = 60 * 60 * 1000;
@@ -101,6 +101,14 @@ function sessionCookie(token, maxAge) {
   return `wl_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
 }
 
+function networkCookie(network, maxAge) {
+  return `wl_network=${network || ""}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+}
+
+function readNetworkCookie(request) {
+  return networkId(readCookie(request, "wl_network"));
+}
+
 function publicOrigin(request) {
   const url = new URL(request.url);
   if (url.hostname === "waltonleaders.org" || url.hostname === "www.waltonleaders.org") return "https://waltonleaders.org";
@@ -163,6 +171,16 @@ async function approvedNetworks(db, email) {
   return (result.results || []).map((row) => row.network);
 }
 
+async function homeNetwork(db, email, preferred) {
+  const result = await db.prepare(`SELECT ms.network FROM members m
+    JOIN memberships ms ON ms.member_id = m.id
+    WHERE m.email = ? AND ms.status = 'approved'
+    ORDER BY ms.created_at ASC, ms.network ASC`).bind(email).all();
+  const list = (result.results || []).map((row) => row.network);
+  if (preferred && list.includes(preferred)) return preferred;
+  return list[0] || "";
+}
+
 async function loadSession(db, request) {
   const token = readCookie(request, "wl_session");
   if (!token) return null;
@@ -175,12 +193,12 @@ async function csrfOk(session, form) {
   return secretsEqual(String(form.get("csrf") || ""), session?.csrf || "");
 }
 
-async function sendMagicLink(env, email, url) {
+async function sendMagicLink(env, email, url, network) {
   if (!env.EMAIL || typeof env.EMAIL.send !== "function") {
     console.error(JSON.stringify({ message: "email binding missing" }));
     return;
   }
-  const message = buildSignInEmail(email, url, FROM, FROM_NAME);
+  const message = buildSignInEmail(email, url, FROM, networkById(network)?.name || "");
   await env.EMAIL.send(new EmailMessage(message.from, message.to, message.raw));
 }
 
@@ -253,7 +271,9 @@ export async function recordBusinessApplication(env, record) {
 export async function handleHub(request, env, ui) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || (path === "/login" && request.method === "POST");
+  const loginNetwork = loginNetworkFromUrl(url);
+  const loginPost = request.method === "POST" && (path === "/login" || Boolean(loginNetwork));
+  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || loginPost;
   if (!hubPath) return null;
 
   const headersOf = (sample) => sample.headers;
@@ -265,7 +285,8 @@ export async function handleHub(request, env, ui) {
   };
   const redirect = (location, cookie) => {
     const headers = new Headers({ Location: new URL(location, request.url).toString() });
-    if (cookie) headers.append("Set-Cookie", cookie);
+    const cookies = !cookie ? [] : Array.isArray(cookie) ? cookie : [cookie];
+    for (const item of cookies) headers.append("Set-Cookie", item);
     return new Response(null, { status: 303, headers });
   };
   const unavailable = () => page(renderUnavailable(DB_MESSAGE));
@@ -274,11 +295,11 @@ export async function handleHub(request, env, ui) {
     const db = database(env);
     if (path === "/api/hub/applications") return await ingest(request, env, db, json);
     if (!db) {
-      if (path === "/login" && request.method === "POST") return redirect("/login?notice=unavailable");
+      if (loginPost) return redirect(loginPath({ notice: "unavailable", network: loginNetwork }));
       if (request.method === "GET" || request.method === "HEAD") return unavailable();
       return unavailable();
     }
-    if (path === "/login" && request.method === "POST") return await requestLink(request, env, db, redirect, ui);
+    if (loginPost) return await requestLink(request, env, db, redirect, ui, loginNetwork);
     if (path === "/login/verify" && (request.method === "GET" || request.method === "HEAD")) return await verifyLink(request, url, env, db, redirect);
     if (path === "/logout" && request.method === "POST") return await logout(request, env, db, redirect, page);
     if (path.startsWith("/admin")) return await adminRoutes(request, env, db, url, page, redirect);
@@ -316,30 +337,29 @@ async function ingest(request, env, db, json) {
   return json({ ok: true, id }, 201);
 }
 
-async function requestLink(request, env, db, redirect, ui) {
+async function requestLink(request, env, db, redirect, ui, network) {
   let form;
   try {
     form = await request.formData();
   } catch {
-    return redirect("/login");
+    return redirect(loginPath({ network }));
   }
   const email = normalizeEmail(form.get("email"));
   if (!isEmail(email)) return ui.text(400, "Please enter a valid email address.");
+  if (!network) return redirect("/login");
   const ip = clientIp(request);
   const emailHit = await rateLimited(db, `email:${email}`, EMAIL_LIMIT);
   const ipHit = await rateLimited(db, `ip:${ip}`, IP_LIMIT);
   if (!emailHit && !ipHit) {
-    const approved = await db.prepare(`SELECT 1 AS ok FROM members m
-      JOIN memberships ms ON ms.member_id = m.id
-      WHERE m.email = ? AND ms.status = 'approved' LIMIT 1`).bind(email).first();
-    if (adminEmails(env).includes(email) || approved) {
+    const memberships = await approvedNetworks(db, email);
+    if (adminEmails(env).includes(email) || memberships.includes(network)) {
       const token = randomToken();
       const now = nowIso();
       await db.prepare("DELETE FROM magic_links WHERE email = ? AND used_at IS NULL").bind(email).run();
       await db.prepare(`INSERT INTO magic_links (id, email, token_hash, expires_at, created_at, request_ip)
         VALUES (?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), email, await sha256(token), new Date(Date.now() + MAGIC_TTL_MS).toISOString(), now, ip.slice(0, 80)).run();
       try {
-        await sendMagicLink(env, email, `${publicOrigin(request)}${verifyLinkPath(token, form.get("next"))}`);
+        await sendMagicLink(env, email, `${publicOrigin(request)}${verifyLinkPath(token, form.get("next"), network)}`, network);
       } catch (error) {
         logError("magic link email failed", error);
       }
@@ -347,40 +367,46 @@ async function requestLink(request, env, db, redirect, ui) {
   } else {
     console.log(JSON.stringify({ message: "magic link rate limited" }));
   }
-  return redirect("/login?sent=1");
+  return redirect(loginPath({ sent: true, next: form.get("next"), network }));
 }
 
 async function verifyLink(request, url, env, db, redirect) {
   const token = url.searchParams.get("token") || "";
   const next = url.searchParams.get("next");
-  if (!/^[A-Za-z0-9_-]{40,120}$/.test(token)) return redirect(loginPath({ notice: "invalid", next }));
+  const requested = networkId(url.searchParams.get("network"));
+  if (!/^[A-Za-z0-9_-]{40,120}$/.test(token)) return redirect(loginPath({ notice: "invalid", next, network: requested }));
   const row = await db.prepare("SELECT id, email, expires_at, used_at FROM magic_links WHERE token_hash = ?").bind(await sha256(token)).first();
-  if (!row || row.used_at || Date.parse(row.expires_at) < Date.now()) return redirect(loginPath({ notice: "invalid", next }));
+  if (!row || row.used_at || Date.parse(row.expires_at) < Date.now()) return redirect(loginPath({ notice: "invalid", next, network: requested }));
   const update = await db.prepare("UPDATE magic_links SET used_at = ? WHERE id = ? AND used_at IS NULL").bind(nowIso(), row.id).run();
-  if (!update.meta || update.meta.changes < 1) return redirect(loginPath({ notice: "invalid", next }));
+  if (!update.meta || update.meta.changes < 1) return redirect(loginPath({ notice: "invalid", next, network: requested }));
   const sessionToken = randomToken();
   const csrf = randomToken();
   const now = nowIso();
   await db.prepare(`INSERT INTO sessions (id, token_hash, email, csrf_token, expires_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), await sha256(sessionToken), row.email, csrf, new Date(Date.now() + SESSION_TTL_MS).toISOString(), now).run();
-  const destination = signInDestination(adminEmails(env).includes(row.email), next);
-  return redirect(destination, sessionCookie(sessionToken, Math.floor(SESSION_TTL_MS / 1000)));
+  const memberships = await approvedNetworks(db, row.email);
+  const isAdmin = adminEmails(env).includes(row.email);
+  const destination = signInDestination(isAdmin, next, requested, memberships);
+  const remember = requested && memberships.includes(requested) ? requested : "";
+  const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+  return redirect(destination, [sessionCookie(sessionToken, maxAge), networkCookie(remember, remember ? maxAge : 0)]);
 }
 
 async function logout(request, env, db, redirect, page) {
   const session = await loadSession(db, request);
-  if (!session) return redirect("/login", sessionCookie("", 0));
+  const network = readNetworkCookie(request);
+  if (!session) return redirect(loginPath({ network }), [sessionCookie("", 0), networkCookie("", 0)]);
   let form;
   try {
     form = await request.formData();
   } catch {
-    return page(renderMessage({ title: "Log out", message: "The form expired. Reload the page and try again.", session, admin: false }), 403);
+    return page(renderMessage({ title: "Log out", message: "The form expired. Reload the page and try again.", session, admin: false, network }), 403);
   }
   if (!(await csrfOk(session, form))) {
-    return page(renderMessage({ title: "Log out", message: "The form expired. Reload the page and try again.", session, admin: adminEmails(env).includes(session.email) }), 403);
+    return page(renderMessage({ title: "Log out", message: "The form expired. Reload the page and try again.", session, admin: adminEmails(env).includes(session.email), network }), 403);
   }
   await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(session.tokenHash).run();
-  return redirect("/", sessionCookie("", 0));
+  return redirect(loginPath({ network }), [sessionCookie("", 0), networkCookie("", 0)]);
 }
 
 async function adminRoutes(request, env, db, url, page, redirect) {
@@ -424,7 +450,7 @@ async function applicationRoute(request, env, db, session, id, action, page, red
     const form = await request.formData();
     if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
     if (action === "/notes") return addApplicationNote(db, session, application, form, page, redirect);
-    if (action === "/approve") await approveApplication(env, db, application, session.email);
+    if (action === "/approve") await approveApplication(env, db, application, session.email, form);
     else await denyApplication(db, application, session.email);
     return redirect(`/admin/applications/${id}`);
   }
@@ -508,9 +534,10 @@ async function carryApplicationNotes(db, application, memberId) {
   }
 }
 
-async function approveApplication(env, db, application, reviewer) {
+async function approveApplication(env, db, application, reviewer, form) {
   const now = nowIso();
   const email = normalizeEmail(application.email);
+  const networks = approvalNetworks(application.network, form ? form.getAll("networks") : []);
   const existing = await db.prepare("SELECT id FROM members WHERE email = ?").bind(email).first();
   const memberId = existing?.id || crypto.randomUUID();
   if (!existing) {
@@ -518,17 +545,27 @@ async function approveApplication(env, db, application, reviewer) {
   } else {
     await db.prepare("UPDATE members SET name = ?, updated_at = ? WHERE id = ?").bind(application.name, now, memberId).run();
   }
-  await db.prepare(`INSERT INTO memberships (member_id, network, role, status, created_at, updated_at)
-    VALUES (?, ?, 'member', 'approved', ?, ?)
-    ON CONFLICT(member_id, network) DO UPDATE SET status = 'approved', updated_at = excluded.updated_at`).bind(memberId, application.network, now, now).run();
+  for (const network of networks) {
+    await db.prepare(`INSERT INTO memberships (member_id, network, role, status, created_at, updated_at)
+      VALUES (?, ?, 'member', 'approved', ?, ?)
+      ON CONFLICT(member_id, network) DO UPDATE SET status = 'approved', updated_at = excluded.updated_at`).bind(memberId, network, now, now).run();
+  }
   let status = "not_configured";
   let detail = "MailerLite not configured";
   if (String(env.MAILERLITE_API_KEY || "").trim()) {
-    const result = await addToMailerLite(env, email, application.name, groupIdsForApproval(env, application.network));
+    const result = await addToMailerLite(env, email, application.name, groupIdsForApprovals(env, networks));
     status = result.status;
     detail = result.detail;
   }
+  const summary = approvalSummary(networks);
+  detail = `Memberships added: ${summary}. ${detail}`;
   await db.prepare(`UPDATE applications SET status = 'approved', reviewed_at = ?, reviewed_by = ?, mailerlite_status = ?, mailerlite_detail = ? WHERE id = ?`).bind(now, reviewer, status, detail, application.id).run();
+  try {
+    await db.prepare(`INSERT INTO application_notes (id, application_id, author_email, body, created_at)
+      VALUES (?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), application.id, reviewer, `Approved for ${summary}.`, now).run();
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
   await carryApplicationNotes(db, application, memberId);
 }
 
@@ -763,23 +800,34 @@ async function memberRoutes(request, env, db, url, page, redirect) {
   const admin = adminEmails(env).includes(session.email);
   const memberships = await approvedNetworks(db, session.email);
   const path = url.pathname;
-  if (path === "/hub" && (request.method === "GET" || request.method === "HEAD")) return page(renderHubHome({ session, admin, memberships }));
-  if (path === "/hub/profile") return profileRoute(request, db, session, admin, url, page, redirect);
+  const preferred = readNetworkCookie(request);
+  if (path === "/hub" && (request.method === "GET" || request.method === "HEAD")) {
+    const target = await homeNetwork(db, session.email, preferred);
+    if (target) return redirect(`/hub/${target}`);
+    return page(renderMessage({ title: "Member hub", message: "You are signed in, and no network hub is on this account yet.", session, admin }));
+  }
+  if (path === "/hub/profile") {
+    const target = await homeNetwork(db, session.email, preferred);
+    if (!target) return page(renderMessage({ title: "Profile", message: "A profile is created when an application is approved.", session, admin }));
+    return redirect(`/hub/${target}/profile${url.search}`);
+  }
   const mediaMatch = path.match(/^\/hub\/media\/([0-9a-f-]{36})$/);
   if (mediaMatch && (request.method === "GET" || request.method === "HEAD")) return serveMedia(request, env, db, session, admin, memberships, mediaMatch[1], page);
   const networkMatch = path.match(/^\/hub\/(business|builders|tourism)(?:\/([a-z0-9]+(?:-[a-z0-9]+)*))?$/);
   if (!networkMatch) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 404);
   const network = networkMatch[1];
   const slug = networkMatch[2] || "";
+  const also = memberships.filter((id) => id !== network);
   if (!memberships.includes(network)) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 404);
-  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 405);
-  if (!slug) return networkHome(db, session, admin, network, page);
+  if (slug === "profile") return profileRoute(request, db, session, admin, url, page, redirect, network, also);
+  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
+  if (!slug) return networkHome(db, session, admin, network, page, also);
   const item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE network = ? AND slug = ? AND status = 'published'`).bind(network, slug).first();
-  if (!item) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 404);
-  return page(renderMemberItem({ session, admin, item }));
+  if (!item) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 404);
+  return page(renderMemberItem({ session, admin, item, also }));
 }
 
-async function networkHome(db, session, admin, network, page) {
+async function networkHome(db, session, admin, network, page, also) {
   const result = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items
     WHERE network = ? AND status = 'published'
     ORDER BY pinned DESC, CASE type WHEN 'announcement' THEN 0 ELSE 1 END, COALESCE(published_at, updated_at) DESC`).bind(network).all();
@@ -796,20 +844,21 @@ async function networkHome(db, session, admin, network, page) {
     session,
     admin,
     network,
+    also,
     top,
     resources: items.filter((item) => item.type === "resource" && !topIds.has(item.id)),
     stories: items.filter((item) => (item.type === "post" || item.type === "page") && !topIds.has(item.id)),
   }));
 }
 
-async function profileRoute(request, db, session, admin, url, page, redirect) {
+async function profileRoute(request, db, session, admin, url, page, redirect, network, also) {
   const member = await db.prepare("SELECT id, email, name FROM members WHERE email = ?").bind(session.email).first();
   if (!member) {
-    return page(renderMessage({ title: "Profile", message: "A profile is created when an application is approved.", session, admin }));
+    return page(renderMessage({ title: "Profile", message: "A profile is created when an application is approved.", session, admin, network, also }));
   }
   if (request.method === "POST") {
     const form = await request.formData();
-    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin }), 403);
+    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin, network, also }), 403);
     const ids = form.getAll("field_id").map(String);
     const labels = form.getAll("field_label").map(String);
     const values = form.getAll("field_value").map(String);
@@ -828,6 +877,8 @@ async function profileRoute(request, db, session, admin, url, page, redirect) {
       return page(renderProfile({
         session,
         admin,
+        network,
+        also,
         profile: {
           name: String(form.get("name") || ""),
           company: String(form.get("company") || ""),
@@ -856,13 +907,15 @@ async function profileRoute(request, db, session, admin, url, page, redirect) {
       await db.prepare(`INSERT INTO member_profile_fields (id, member_id, label, value, sort_order, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), member.id, field.label, field.value, index, now, now).run();
     }
-    return redirect("/hub/profile?saved=1");
+    return redirect(`/hub/${network}/profile?saved=1`);
   }
-  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 405);
+  if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
   const current = await profileView(db, member);
   return page(renderProfile({
     session,
     admin,
+    network,
+    also,
     ...current,
     message: url.searchParams.get("saved") === "1" ? "Profile saved." : "",
   }));

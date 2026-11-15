@@ -16,7 +16,7 @@ import {
   verifyLinkPath,
   renderMarkdown,
 } from "../src/text.js";
-import { renderApplicationDetail, renderHubHome, renderMemberDetail, renderProfile } from "../src/hub-pages.js";
+import { renderApplicationDetail, renderMemberDetail, renderNetworkHub, renderProfile } from "../src/hub-pages.js";
 import {
   firstPublishedAt,
   groupIdsForApproval,
@@ -207,7 +207,7 @@ test("member queries keep network and published scope", () => {
   assert.equal(hub.slice(profileStart, profileEnd).includes("application_notes"), false);
   assert.equal(memberFacing.includes("application_notes"), false);
   assert.match(hub.slice(hub.indexOf("async function addToMailerLite"), hub.indexOf("function parseFields")), /mailerLitePayload\(email, name, groups\)/);
-  assert.match(hub, /signInDestination\(adminEmails\(env\)\.includes\(row\.email\), next\)/);
+  assert.match(hub, /signInDestination\(isAdmin, next, requested, memberships\)/);
   assert.match(hub, /carryApplicationNotes\(db, application, memberId\)/);
 });
 
@@ -350,7 +350,14 @@ test("member pages escape application notes and keep them off the hub", () => {
   assert.match(detail, /class="response-empty">Not provided</);
   assert.match(detail, /href="tel:\+18505550199"/);
   assert.match(detail, /Open application/);
-  const hub = renderHubHome({ session: { email: "ada@example.com", csrf: "csrf" }, admin: false, memberships: ["builders"] });
+  const hub = renderNetworkHub({
+    session: { email: "ada@example.com", csrf: "csrf" },
+    admin: false,
+    network: "builders",
+    top: [],
+    resources: [],
+    stories: [],
+  });
   const profile = renderProfile({
     session: { email: "ada@example.com", csrf: "csrf" },
     admin: false,
@@ -411,10 +418,14 @@ test("phones, websites, return paths, and note copies stay safe", () => {
 
 test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
   const url = "https://waltonleaders.org/login/verify?token=abc&next=/hub";
-  const message = buildSignInEmail("ada@example.com", url);
+  const message = buildSignInEmail("ada@example.com", url, undefined, "Walton County Builders Network");
   assert.equal(message.from, "hello@waltonleaders.org");
   assert.equal(message.to, "ada@example.com");
-  assert.match(message.raw, /From: Walton County Business Leaders <hello@waltonleaders\.org>/);
+  assert.match(message.raw, /From: Walton County Builders Network <hello@waltonleaders\.org>/);
+  assert.match(message.raw, /Subject: Sign in to Walton County Builders Network/);
+  assert.match(message.raw, /Sign in to Walton County Builders Network/);
+  assert.equal(message.raw.includes("Business Leaders"), false);
+  assert.equal(message.raw.includes("Walton County Networks"), false);
   assert.match(message.raw, /To: ada@example\.com/);
   assert.match(message.raw, /Reply-To: hello@waltonleaders\.org/);
   assert.equal(message.raw.includes("Reply-To: ada@example.com"), false);
