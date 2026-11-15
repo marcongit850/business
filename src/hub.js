@@ -40,6 +40,7 @@ import {
   approvalNetworks,
   firstPublishedAt,
   groupIdsForApprovals,
+  groupIdsForRemovals,
   mailerLitePayload,
   normalizeEmail,
   validateContent,
@@ -552,7 +553,7 @@ async function adminRoutes(request, env, db, url, page, redirect) {
     const network = ["business", "builders", "tourism"].includes(url.searchParams.get("network")) ? url.searchParams.get("network") : "business";
     return page(renderContentEditor({ session, item: { network, type: "post", title: "", slug: "", description: "", link_url: "", body: "", pinned: 0, image_alt: "" } }));
   }
-  if (path === "/admin/content" && request.method === "POST") return saveContent(request, db, session, null, page, redirect);
+  if (path === "/admin/content" && request.method === "POST") return saveContent(request, env, db, session, null, page, redirect);
   const contentMatch = path.match(/^\/admin\/content\/([0-9a-f-]{36})(\/preview|\/publish|\/unpublish|\/pin|\/delete|\/image\/remove|\/image)?$/);
   if (contentMatch) return contentRoute(request, env, db, session, contentMatch[1], contentMatch[2] || "", url, page, redirect);
   return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
@@ -561,12 +562,23 @@ async function adminRoutes(request, env, db, url, page, redirect) {
 async function listApplications(env, db, url, session, page) {
   const network = ["business", "builders", "tourism"].includes(url.searchParams.get("network")) ? url.searchParams.get("network") : "";
   const status = ["pending", "approved", "denied"].includes(url.searchParams.get("status")) ? url.searchParams.get("status") : "";
-  const result = await db.prepare(`SELECT id, network, name, email, submitted_at, status FROM applications
-    WHERE (? = '' OR network = ?) AND (? = '' OR status = ?)
-    ORDER BY submitted_at DESC LIMIT 200`).bind(network, network, status, status).all();
+  const result = await db.prepare(`SELECT a.id, a.network, a.name, a.email, a.submitted_at, a.status,
+      (
+        SELECT GROUP_CONCAT(ms.network, ',')
+        FROM members m
+        JOIN memberships ms ON ms.member_id = m.id AND ms.status = 'approved'
+        WHERE lower(m.email) = lower(a.email)
+      ) AS member_networks
+    FROM applications a
+    WHERE (? = '' OR a.network = ?) AND (? = '' OR a.status = ?)
+    ORDER BY a.submitted_at DESC LIMIT 200`).bind(network, network, status, status).all();
+  const rows = (result.results || []).map((row) => ({
+    ...row,
+    member_networks: String(row.member_networks || "").split(",").map((item) => item.trim()).filter(Boolean),
+  }));
   const notes = [];
   if (!String(env.MAILERLITE_API_KEY || "").trim()) notes.push("MailerLite not configured.");
-  return page(renderApplications({ session, network, status, rows: result.results || [], mailerNote: notes.join(" ") }));
+  return page(renderApplications({ session, network, status, rows, mailerNote: notes.join(" ") }));
 }
 
 async function listFlagPage(db, session, page) {
@@ -651,6 +663,7 @@ function missingColumn(error) {
 
 async function showApplication(db, session, application, message, noteDraft, status, page) {
   const loaded = await loadApplicationNotes(db, application.id);
+  const memberNetworks = await approvedMemberships(db, normalizeEmail(application.email));
   return page(renderApplicationDetail({
     session,
     application,
@@ -659,7 +672,16 @@ async function showApplication(db, session, application, message, noteDraft, sta
     message,
     noteDraft,
     notesReady: loaded.ready,
+    memberNetworks,
   }), status);
+}
+
+async function approvedMemberships(db, email) {
+  const result = await db.prepare(`SELECT ms.network FROM members m
+    JOIN memberships ms ON ms.member_id = m.id AND ms.status = 'approved'
+    WHERE m.email = ?
+    ORDER BY ms.network`).bind(email).all();
+  return (result.results || []).map((row) => row.network);
 }
 
 async function loadApplicationNotes(db, applicationId) {
@@ -720,6 +742,10 @@ async function approveApplication(env, db, application, reviewer, form) {
   const now = nowIso();
   const email = normalizeEmail(application.email);
   const networks = approvalNetworks(application.network, form ? form.getAll("networks") : []);
+  const summary = approvalSummary(networks);
+  const before = await approvedMemberships(db, email);
+  const added = networks.filter((network) => !before.includes(network));
+  const removed = before.filter((network) => !networks.includes(network));
   const existing = await db.prepare("SELECT id FROM members WHERE email = ?").bind(email).first();
   const memberId = existing?.id || crypto.randomUUID();
   if (!existing) {
@@ -732,23 +758,59 @@ async function approveApplication(env, db, application, reviewer, form) {
       VALUES (?, ?, 'member', 'approved', ?, ?)
       ON CONFLICT(member_id, network) DO UPDATE SET status = 'approved', updated_at = excluded.updated_at`).bind(memberId, network, now, now).run();
   }
+  for (const network of removed) {
+    await db.prepare("UPDATE memberships SET status = 'denied', updated_at = ? WHERE member_id = ? AND network = ?").bind(now, memberId, network).run();
+  }
   const existingProfile = await db.prepare("SELECT name, company, role_title, phone, location, website, bio FROM member_profiles WHERE member_id = ?").bind(memberId).first();
   await fillProfileFromApplications(db, memberId, existingProfile, [application], now);
-  let status = "not_configured";
-  let detail = "MailerLite not configured";
-  if (String(env.MAILERLITE_API_KEY || "").trim()) {
-    const result = await addToMailerLite(env, email, application.name, groupIdsForApprovals(env, networks));
-    status = result.status;
-    detail = result.detail;
+  const firstApproval = application.status !== "approved";
+  const changed = added.length > 0 || removed.length > 0;
+  let mailerStatus = application.mailerlite_status || "";
+  let mailerDetail = "";
+  if (changed && String(env.MAILERLITE_API_KEY || "").trim()) {
+    const details = [];
+    mailerStatus = "skipped";
+    if (added.length) {
+      const result = await addToMailerLite(env, email, application.name, groupIdsForApprovals(env, added));
+      mailerStatus = result.status;
+      if (result.detail) details.push(result.detail);
+    }
+    if (removed.length) {
+      const result = await removeFromMailerLite(env, email, groupIdsForRemovals(env, removed));
+      if (result.status === "failed") mailerStatus = "failed";
+      else if (!added.length) mailerStatus = result.status;
+      if (result.detail) details.push(result.detail);
+    }
+    mailerDetail = details.join(" ");
+  } else if (changed) {
+    mailerStatus = "not_configured";
+    mailerDetail = "MailerLite not configured";
   }
-  const summary = approvalSummary(networks);
-  detail = `Memberships added: ${summary}. ${detail}`;
-  await db.prepare(`UPDATE applications SET status = 'approved', reviewed_at = ?, reviewed_by = ?, mailerlite_status = ?, mailerlite_detail = ? WHERE id = ?`).bind(now, reviewer, status, detail, application.id).run();
-  try {
-    await db.prepare(`INSERT INTO application_notes (id, application_id, author_email, body, created_at)
-      VALUES (?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), application.id, reviewer, `Approved for ${summary}.`, now).run();
-  } catch (error) {
-    if (!missingTable(error)) throw error;
+  const review = [];
+  if (added.length) review.push(`Memberships added: ${approvalSummary(added)}.`);
+  if (removed.length) review.push(`Memberships removed: ${approvalSummary(removed)}.`);
+  if (mailerDetail) review.push(mailerDetail);
+  const reviewLine = review.join(" ");
+  if (firstApproval || changed) {
+    await db.prepare(`UPDATE applications SET status = 'approved', reviewed_at = ?, reviewed_by = ?, mailerlite_status = ?, mailerlite_detail = ? WHERE id = ?`).bind(now, reviewer, mailerStatus, reviewLine, application.id).run();
+  }
+  let noteBody = "";
+  if (firstApproval) {
+    noteBody = `Approved for ${summary}.`;
+    if (removed.length) noteBody += ` Memberships removed: ${approvalSummary(removed)}.`;
+  } else if (changed) {
+    const parts = [];
+    if (added.length) parts.push(`Memberships added: ${approvalSummary(added)}.`);
+    if (removed.length) parts.push(`Memberships removed: ${approvalSummary(removed)}.`);
+    noteBody = parts.join(" ");
+  }
+  if (noteBody) {
+    try {
+      await db.prepare(`INSERT INTO application_notes (id, application_id, author_email, body, created_at)
+        VALUES (?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), application.id, reviewer, noteBody, now).run();
+    } catch (error) {
+      if (!missingTable(error)) throw error;
+    }
   }
   await carryApplicationNotes(db, application, memberId);
 }
@@ -1094,10 +1156,28 @@ async function contentRoute(request, env, db, session, id, action, url, page, re
   if (action === "/delete") return deleteContent(env, db, item, redirect);
   if (action === "/image") return uploadImage(env, db, item, form, page, redirect, session);
   if (action === "/image/remove") return removeImage(env, db, item, redirect);
-  return saveContent(request, db, session, item, page, redirect, form);
+  return saveContent(request, env, db, session, item, page, redirect, form);
 }
 
-async function saveContent(request, db, session, existing, page, redirect, existingForm) {
+function chosenImageFile(form) {
+  const file = form.get("image");
+  if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") return null;
+  const name = String(file.name || "").trim();
+  const size = Number(file.size) || 0;
+  if (!name && size <= 0) return null;
+  return file;
+}
+
+async function deleteStoredImage(env, key) {
+  if (!key || !env?.HUB_MEDIA || typeof env.HUB_MEDIA.delete !== "function") return;
+  try {
+    await env.HUB_MEDIA.delete(key);
+  } catch (error) {
+    logError("image delete failed", error);
+  }
+}
+
+async function saveContent(request, env, db, session, existing, page, redirect, existingForm) {
   const form = existingForm || await request.formData();
   if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
   const parsed = validateContent({
@@ -1127,38 +1207,92 @@ async function saveContent(request, db, session, existing, page, redirect, exist
   };
   if (parsed.error) return page(renderContentEditor({ session, item: draft, message: parsed.error }), 400);
   const value = parsed.value;
+  const file = chosenImageFile(form);
+  let prepared = null;
+  if (file) {
+    if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
+      return page(renderContentEditor({ session, item: draft, message: "Use a JPEG, PNG, or WebP image up to 5 MB." }), 400);
+    }
+    prepared = stripImageMetadata(new Uint8Array(await file.arrayBuffer()));
+    if (!prepared) return page(renderContentEditor({ session, item: draft, message: "Use a JPEG, PNG, or WebP image up to 5 MB." }), 400);
+  }
+  const needsAlt = Boolean(prepared) || Boolean(existing?.image_key);
+  if (needsAlt && !value.image_alt) {
+    return page(renderContentEditor({ session, item: draft, message: "Add an image description of 180 characters or fewer." }), 400);
+  }
+  if (prepared && (!env?.HUB_MEDIA || typeof env.HUB_MEDIA.put !== "function")) {
+    return page(renderContentEditor({ session, item: draft, message: "Media storage is not configured." }), 400);
+  }
   const conflict = await db.prepare("SELECT id FROM content_items WHERE network = ? AND slug = ? AND id != ?").bind(value.network, value.slug, existing?.id || "").first();
   if (conflict) return page(renderContentEditor({ session, item: { ...draft, ...value }, message: "That slug is already used on this network." }), 400);
-  const now = nowIso();
-  const shared = value.share_all ? 1 : 0;
-  if (!existing) {
-    const id = crypto.randomUUID();
+  let uploadedKey = "";
+  try {
+    if (prepared) {
+      uploadedKey = `img/${crypto.randomUUID()}`;
+      await env.HUB_MEDIA.put(uploadedKey, prepared.bytes, { httpMetadata: { contentType: prepared.type } });
+    }
+    const now = nowIso();
+    const shared = value.share_all ? 1 : 0;
+    const imageKey = uploadedKey || null;
+    const imageType = prepared ? prepared.type : null;
+    const imageBytes = prepared ? prepared.bytes.byteLength : null;
+    if (!existing) {
+      const id = crypto.randomUUID();
+      const notice = await insertContent(db, {
+        id, value, shared, imageKey, imageType, imageBytes, now,
+      });
+      return redirect(`/admin/content/${id}?notice=${notice}`);
+    }
+    const notice = await updateContent(db, existing, value, shared, prepared ? { imageKey, imageType, imageBytes } : null, now);
+    if (prepared && existing.image_key && existing.image_key !== uploadedKey) await deleteStoredImage(env, existing.image_key);
+    return redirect(`/admin/content/${existing.id}?notice=${notice}`);
+  } catch (error) {
+    if (uploadedKey) await deleteStoredImage(env, uploadedKey);
+    throw error;
+  }
+}
+
+async function insertContent(db, { id, value, shared, imageKey, imageType, imageBytes, now }) {
+  try {
+    await db.prepare(`INSERT INTO content_items
+      (id, network, type, status, title, slug, body, description, link_url, pinned, share_all, image_key, image_alt, image_type, image_bytes, created_at, updated_at, published_at)
+      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
+      id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, imageKey, value.image_alt, imageType, imageBytes, now, now,
+    ).run();
+    return "saved";
+  } catch (error) {
+    if (!missingColumn(error)) throw error;
+    await db.prepare(`INSERT INTO content_items
+      (id, network, type, status, title, slug, body, description, link_url, pinned, image_key, image_alt, image_type, image_bytes, created_at, updated_at, published_at)
+      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
+      id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, imageKey, value.image_alt, imageType, imageBytes, now, now,
+    ).run();
+    return "share";
+  }
+}
+
+async function updateContent(db, existing, value, shared, image, now) {
+  if (image) {
     try {
-      await db.prepare(`INSERT INTO content_items
-        (id, network, type, status, title, slug, body, description, link_url, pinned, share_all, image_alt, created_at, updated_at, published_at)
-        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
-        id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, value.image_alt, now, now,
-      ).run();
-      return redirect(`/admin/content/${id}?notice=saved`);
+      await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, share_all = ?, image_key = ?, image_alt = ?, image_type = ?, image_bytes = ?, updated_at = ?
+        WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, image.imageKey, value.image_alt, image.imageType, image.imageBytes, now, existing.id).run();
+      return "saved";
     } catch (error) {
       if (!missingColumn(error)) throw error;
-      await db.prepare(`INSERT INTO content_items
-        (id, network, type, status, title, slug, body, description, link_url, pinned, image_alt, created_at, updated_at, published_at)
-        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`).bind(
-        id, value.network, value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, now,
-      ).run();
-      return redirect(`/admin/content/${id}?notice=share`);
+      await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, image_key = ?, image_alt = ?, image_type = ?, image_bytes = ?, updated_at = ?
+        WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, image.imageKey, value.image_alt, image.imageType, image.imageBytes, now, existing.id).run();
+      return "share";
     }
   }
   try {
     await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, share_all = ?, image_alt = ?, updated_at = ?
       WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, shared, value.image_alt, now, existing.id).run();
-    return redirect(`/admin/content/${existing.id}?notice=saved`);
+    return "saved";
   } catch (error) {
     if (!missingColumn(error)) throw error;
     await db.prepare(`UPDATE content_items SET type = ?, title = ?, slug = ?, body = ?, description = ?, link_url = ?, pinned = ?, image_alt = ?, updated_at = ?
       WHERE id = ?`).bind(value.type, value.title, value.slug, value.body, value.description, value.link_url, value.pinned, value.image_alt, now, existing.id).run();
-    return redirect(`/admin/content/${existing.id}?notice=share`);
+    return "share";
   }
 }
 

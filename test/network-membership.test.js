@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { renderApplicationDetail, renderLogin, renderNetworkHub, renderProfile } from "../src/hub-pages.js";
+import { renderApplicationDetail, renderApplications, renderLogin, renderNetworkHub, renderProfile } from "../src/hub-pages.js";
 import { networkLogo } from "../src/network-logos.js";
 import { loginNetworkFromUrl } from "../src/networks.js";
 import { buildSignInEmail, loginPath, signInDestination, verifyLinkPath } from "../src/text.js";
@@ -165,11 +165,65 @@ test("approval can add every checked network and keeps the applied network", () 
   const denyFn = hub.slice(hub.indexOf("async function denyApplication"), hub.indexOf("async function listMembers"));
   assert.match(approve, /for \(const network of networks\)/);
   assert.match(approve, /approvalNetworks\(/);
-  assert.match(approve, /groupIdsForApprovals\(env, networks\)/);
+  assert.match(approve, /groupIdsForApprovals\(env, added\)/);
+  assert.match(approve, /groupIdsForRemovals\(env, removed\)/);
+  assert.match(approve, /removeFromMailerLite/);
+  assert.match(approve, /Memberships removed:/);
   assert.match(approve, /Approved for \$\{summary\}\./);
   assert.match(approve, /INSERT INTO memberships/);
   assert.equal(denyFn.includes("approvalNetworks"), false);
   assert.equal(denyFn.includes("groupIdsForApprovals"), false);
+
+  const approved = renderApplicationDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf-token" },
+    application: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Ada Example",
+      email: "ada@example.com",
+      network: "business",
+      status: "approved",
+      submitted_at: "2026-11-15T15:24:00.000Z",
+    },
+    fields: {},
+    memberNetworks: ["business", "tourism"],
+  });
+  assert.match(approved, /Also added: Tourism/);
+  assert.match(approved, /name="networks" value="tourism" checked/);
+  assert.match(approved, /<span class="meta">Member<\/span>/);
+  assert.match(approved, />Save networks</);
+  assert.match(approved, />Deny</);
+  assert.match(approved, /name="networks" value="business" checked disabled/);
+  assert.equal(/value="builders" checked/.test(approved), false);
+  const list = renderApplications({
+    session: { email: "marc@whpinc.com", csrf: "csrf-token" },
+    network: "",
+    status: "",
+    rows: [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Ada Example",
+        email: "ada@example.com",
+        network: "business",
+        status: "approved",
+        submitted_at: "2026-11-15T15:24:00.000Z",
+        member_networks: ["business", "builders", "tourism"],
+      },
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Bea Example",
+        email: "bea@example.com",
+        network: "tourism",
+        status: "pending",
+        submitted_at: "2026-11-15T16:00:00.000Z",
+        member_networks: ["tourism", "builders"],
+      },
+    ],
+  });
+  assert.match(list, /Business Leaders<div class="meta">Also added: Builders, Tourism<\/div>/);
+  const pendingRow = list.slice(list.indexOf("Bea Example"), list.indexOf("</tr>", list.indexOf("Bea Example")));
+  assert.match(pendingRow, />Tourism</);
+  assert.equal(pendingRow.includes("Also added"), false);
+  assert.equal(/[—–]/.test(approved + list), false);
 });
 
 test("copied logos match the files in this repo", () => {

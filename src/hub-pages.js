@@ -669,12 +669,25 @@ function sourceLine(value) {
   return `<p class="meta">Source ${inner}</p>`;
 }
 
+function extraNetworkLabels(applied, networks) {
+  const have = new Set(Array.isArray(networks) ? networks : String(networks || "").split(",").map((item) => item.trim()).filter(Boolean));
+  return NETWORK_IDS.filter((id) => id !== applied && have.has(id)).map((id) => networkLabel(id)).filter(Boolean);
+}
+
+function networkMembershipCell(row) {
+  const primary = escapeHtml(networkLabel(row.network));
+  if (row.status !== "approved") return primary;
+  const extras = extraNetworkLabels(row.network, row.member_networks);
+  if (!extras.length) return primary;
+  return `${primary}<div class="meta">Also added: ${escapeHtml(extras.join(", "))}</div>`;
+}
+
 export function renderApplications({ session, network, status, rows, mailerNote }) {
   const option = (value, current, label) => `<option value="${value}"${value === current ? " selected" : ""}>${label}</option>`;
   const bodyRows = rows.length
     ? rows.map((row) => `<tr>
         <td data-label="Name"><a class="text-link" href="/admin/applications/${escapeHtml(row.id)}">${escapeHtml(row.name)}</a><div class="meta">${escapeHtml(row.email)}</div></td>
-        <td>${escapeHtml(networkLabel(row.network))}</td>
+        <td>${networkMembershipCell(row)}</td>
         <td>${escapeHtml(formatWhen(row.submitted_at))}</td>
         <td><span class="pill">${escapeHtml(row.status)}</span></td>
       </tr>`).join("")
@@ -705,33 +718,39 @@ export function renderApplications({ session, network, status, rows, mailerNote 
   });
 }
 
-function networkChecks(applied) {
+function networkChecks(applied, memberNetworks = []) {
+  const member = new Set(memberNetworks || []);
   return networkList().map((item) => {
     const locked = item.id === applied;
+    const isMember = member.has(item.id);
     const box = locked
       ? `<input type="checkbox" name="networks" value="${item.id}" checked disabled><input type="hidden" name="networks" value="${item.id}">`
-      : `<input type="checkbox" name="networks" value="${item.id}">`;
-    const note = locked ? ` <span class="meta">Applied network</span>` : "";
+      : `<input type="checkbox" name="networks" value="${item.id}"${isMember ? " checked" : ""}>`;
+    const note = locked
+      ? ` <span class="meta">Applied network</span>`
+      : (isMember ? ` <span class="meta">Member</span>` : "");
     return `<label>${box} ${escapeHtml(item.name)}${note}</label>`;
   }).join("");
 }
 
-export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true }) {
+export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true, memberNetworks = [] }) {
   const applied = networkById(application.network);
   const actions = `<form method="post" action="/admin/applications/${escapeHtml(application.id)}/approve">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
       <fieldset class="check-list">
         <legend>Networks</legend>
-        <p class="meta">This application is for ${escapeHtml(applied?.name || "this network")}. That network stays included. Check any other network this person should join too.</p>
-        ${networkChecks(application.network)}
+        <p class="meta">This application is for ${escapeHtml(applied?.name || "this network")}. That network stays included. Check every other network this person should belong to. Unchecking a network removes it.</p>
+        ${networkChecks(application.network, memberNetworks)}
       </fieldset>
-      <button class="button" type="submit">Approve</button>
+      <button class="button" type="submit">${application.status === "approved" ? "Save networks" : "Approve"}</button>
     </form>
     <form method="post" action="/admin/applications/${escapeHtml(application.id)}/deny">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
       <button class="button secondary" type="submit">Deny</button>
     </form>`;
   const network = networkLabel(application.network);
+  const also = application.status === "approved" ? extraNetworkLabels(application.network, memberNetworks) : [];
+  const alsoLine = also.length ? `<p class="meta">Also added: ${escapeHtml(also.join(", "))}</p>` : "";
   const email = String(application.email || "").trim();
   const emailHtml = isEmail(email)
     ? `<a class="text-link" href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`
@@ -747,6 +766,7 @@ export function renderApplicationDetail({ session, application, fields, notes = 
       ${notice(message)}
       <div class="app-summary">
         <p class="app-pills">${statusPill(application.status)}${network ? `<span class="pill">${escapeHtml(network)}</span>` : ""}</p>
+        ${alsoLine}
         <p class="meta">Submitted ${escapeHtml(formatWhen(application.submitted_at))}</p>
         <p class="meta">${emailHtml}</p>
         ${reviewed}
@@ -1027,17 +1047,12 @@ export function renderContentEditor({ session, item, message }) {
   const statusLine = isNew
     ? ""
     : `<p class="meta"><span class="pill">${escapeHtml(item.status)}</span> Created ${escapeHtml(formatWhen(item.created_at))} · Updated ${escapeHtml(formatWhen(item.updated_at))}${item.published_at ? ` · First published ${escapeHtml(formatWhen(item.published_at))}` : ""}</p>`;
-  const imageBlock = !isNew && item.image_key
-    ? `${imageTag(item)}<form method="post" action="/admin/content/${escapeHtml(item.id)}/image/remove"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="button secondary" type="submit">Remove image</button></form>`
+  const hasImage = Boolean(!isNew && item.image_key);
+  const imagePreview = hasImage ? imageTag(item) : "";
+  const removeImage = hasImage
+    ? `<form method="post" action="/admin/content/${escapeHtml(item.id)}/image/remove"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="button secondary" type="submit">Remove image</button></form>`
     : "";
-  const upload = isNew
-    ? "<p>Save the draft first, then add a featured image.</p>"
-    : `<form class="stack" method="post" action="/admin/content/${escapeHtml(item.id)}/image" enctype="multipart/form-data">
-        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
-        <label>Featured image<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
-        <label>Image description<input name="image_alt" maxlength="180" value="${escapeHtml(item.image_alt || "")}" required></label>
-        <button class="button secondary" type="submit">${item.image_key ? "Replace image" : "Upload image"}</button>
-      </form>`;
+  const fileLabel = hasImage ? "Replace image" : "Featured image";
   const publish = isNew
     ? ""
     : `<div class="row-actions">
@@ -1055,7 +1070,7 @@ export function renderContentEditor({ session, item, message }) {
       ${notice(message)}
       ${statusLine}
       ${publish}
-      <form class="stack" method="post" action="${action}">
+      <form class="stack" method="post" action="${action}" enctype="multipart/form-data">
         <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
         <label>Network<select name="network" ${isNew ? "" : "disabled"}>
           ${option("business", item.network, "Business Leaders")}
@@ -1078,12 +1093,13 @@ export function renderContentEditor({ session, item, message }) {
         <label>Pin this item<input type="checkbox" name="pinned" value="1"${item.pinned ? " checked" : ""}></label>
         <label>Show on all networks<input type="checkbox" name="share_all" value="1"${item.share_all ? " checked" : ""}></label>
         <p class="meta">Checked items appear in Latest for every network. Leave it unchecked to keep this item on the network above.</p>
-        <label>Image description<input name="image_alt" maxlength="180" value="${escapeHtml(item.image_alt || "")}"></label>
+        <h2>Featured image</h2>
+        ${imagePreview}
+        <label>${fileLabel}<input type="file" name="image" accept="image/jpeg,image/png,image/webp"></label>
+        <label>Image description<input name="image_alt" maxlength="180" value="${escapeHtml(item.image_alt || "")}"${hasImage ? " required" : ""}></label>
         <button class="button" type="submit">${isNew ? "Save draft" : "Save"}</button>
       </form>
-      <h2>Featured image</h2>
-      ${imageBlock}
-      ${upload}`,
+      ${removeImage}`,
   });
 }
 
