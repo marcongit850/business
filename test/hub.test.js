@@ -137,6 +137,31 @@ test("mailerlite payload is only the subscriber and groups", () => {
   assert.deepEqual(payload.fields, { name: "Ada" });
   assert.equal(JSON.stringify(payload).includes("note"), false);
   assert.deepEqual(groupIdsForApproval({ MAILERLITE_GROUP_MASTER: " 1 ", MAILERLITE_GROUP_BUSINESS_APPROVED: "2" }, "business"), ["1", "2"]);
+  const groups = {
+    MAILERLITE_GROUP_MASTER: "204225136696493336",
+    MAILERLITE_GROUP_BUSINESS: "204225137081320769",
+    MAILERLITE_GROUP_BUILDERS: "204225138229511712",
+    MAILERLITE_GROUP_TOURISM: "204225138526258910",
+    MAILERLITE_GROUP_BUSINESS_APPROVED: "204225138578687754",
+    MAILERLITE_GROUP_BUILDERS_APPROVED: "204225138819860402",
+    MAILERLITE_GROUP_TOURISM_APPROVED: "204225140788037399",
+  };
+  const wrangler = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  for (const [key, value] of Object.entries(groups)) {
+    assert.match(wrangler, new RegExp(`${key} = "${value}"`));
+    assert.equal(wrangler.includes(`${key} = ""`), false);
+  }
+  assert.equal(wrangler.includes("MAILERLITE_API_KEY"), false);
+  assert.deepEqual(groupIdsForApproval(groups, "builders"), [
+    groups.MAILERLITE_GROUP_MASTER,
+    groups.MAILERLITE_GROUP_BUILDERS,
+    groups.MAILERLITE_GROUP_BUILDERS_APPROVED,
+  ]);
+  assert.deepEqual(groupIdsForApproval(groups, "tourism"), [
+    groups.MAILERLITE_GROUP_MASTER,
+    groups.MAILERLITE_GROUP_TOURISM,
+    groups.MAILERLITE_GROUP_TOURISM_APPROVED,
+  ]);
 });
 
 test("published_at is set on the first publish and kept after unpublish", () => {

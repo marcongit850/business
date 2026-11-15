@@ -61,7 +61,7 @@ Vars already named in `wrangler.toml`:
 - `MAILERLITE_GROUP_BUILDERS_APPROVED`
 - `MAILERLITE_GROUP_TOURISM_APPROVED`
 
-Put group ids in `wrangler.toml` and deploy. A dashboard-only value can be overwritten by the empty strings in this file on the next build.
+The MailerLite group ids are set in `wrangler.toml`. `MAILERLITE_API_KEY` stays a secret and is not in git.
 
 `ADMIN_EMAILS` is a comma-separated list. It is `marc@whpinc.com` for the current solo admin. There is no password and no broader role editor yet. The `memberships.role` column is there so a later per-network editor grant can be stored without a new table.
 
@@ -119,5 +119,5 @@ Header: `X-Hub-Key: <HUB_INGEST_KEY>`
 - Replace the D1 placeholder id, create `walton-hub-media`, and apply migrations on the remote database.
 - Set `HUB_INGEST_KEY` to the same value the Builders and Tourism workers send.
 - Create the MailerLite groups, paste the welcome copy, and set each approved group's from name and from address.
-- Set `MAILERLITE_API_KEY` and the group id vars.
+- Set `MAILERLITE_API_KEY`. The group ids are already in `wrangler.toml`.
 - In Google Ads, conversion action primary and secondary settings are still changed in the Google Ads interface.
