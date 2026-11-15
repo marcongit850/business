@@ -24,6 +24,8 @@ Apply the schema to the remote database:
 npx wrangler d1 migrations apply walton-hub --remote
 ```
 
+Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes.
+
 Local preview:
 
 ```bash

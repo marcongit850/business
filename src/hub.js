@@ -15,7 +15,7 @@ import {
   renderProfile,
   renderUnavailable,
 } from "./hub-pages.js";
-import { isEmail } from "./text.js";
+import { applicationNoteText, isEmail, loginPath, mergeAdminNotes, signInDestination, verifyLinkPath } from "./text.js";
 import {
   firstPublishedAt,
   groupIdsForApproval,
@@ -36,6 +36,7 @@ const EMAIL_LIMIT = 5;
 const IP_LIMIT = 20;
 const JSON_LIMIT = 64 * 1024;
 const NOTE_LIMIT = 10000;
+const NOTE_BODY_LIMIT = 4000;
 const DB_MESSAGE = "The member database is not ready. Create the walton-hub D1 database, put its id in wrangler.toml, and apply migrations.";
 
 const CONTENT_COLUMNS = `id, network, type, status, title, slug, body, description, link_url, pinned, image_key, image_alt, image_type, created_at, updated_at, published_at`;
@@ -302,7 +303,7 @@ export async function handleHub(request, env, ui) {
       return unavailable();
     }
     if (path === "/login" && request.method === "POST") return await requestLink(request, env, db, redirect, ui);
-    if (path === "/login/verify" && (request.method === "GET" || request.method === "HEAD")) return await verifyLink(request, url, db, redirect);
+    if (path === "/login/verify" && (request.method === "GET" || request.method === "HEAD")) return await verifyLink(request, url, env, db, redirect);
     if (path === "/logout" && request.method === "POST") return await logout(request, env, db, redirect, page);
     if (path.startsWith("/admin")) return await adminRoutes(request, env, db, url, page, redirect);
     if (path.startsWith("/hub")) return await memberRoutes(request, env, db, url, page, redirect);
@@ -362,7 +363,7 @@ async function requestLink(request, env, db, redirect, ui) {
       await db.prepare(`INSERT INTO magic_links (id, email, token_hash, expires_at, created_at, request_ip)
         VALUES (?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), email, await sha256(token), new Date(Date.now() + MAGIC_TTL_MS).toISOString(), now, ip.slice(0, 80)).run();
       try {
-        await sendMagicLink(env, email, `${publicOrigin(request)}/login/verify?token=${token}`);
+        await sendMagicLink(env, email, `${publicOrigin(request)}${verifyLinkPath(token, form.get("next"))}`);
       } catch (error) {
         logError("magic link email failed", error);
       }
@@ -373,19 +374,21 @@ async function requestLink(request, env, db, redirect, ui) {
   return redirect("/login?sent=1");
 }
 
-async function verifyLink(request, url, db, redirect) {
+async function verifyLink(request, url, env, db, redirect) {
   const token = url.searchParams.get("token") || "";
-  if (!/^[A-Za-z0-9_-]{40,120}$/.test(token)) return redirect("/login?notice=invalid");
+  const next = url.searchParams.get("next");
+  if (!/^[A-Za-z0-9_-]{40,120}$/.test(token)) return redirect(loginPath({ notice: "invalid", next }));
   const row = await db.prepare("SELECT id, email, expires_at, used_at FROM magic_links WHERE token_hash = ?").bind(await sha256(token)).first();
-  if (!row || row.used_at || Date.parse(row.expires_at) < Date.now()) return redirect("/login?notice=invalid");
+  if (!row || row.used_at || Date.parse(row.expires_at) < Date.now()) return redirect(loginPath({ notice: "invalid", next }));
   const update = await db.prepare("UPDATE magic_links SET used_at = ? WHERE id = ? AND used_at IS NULL").bind(nowIso(), row.id).run();
-  if (!update.meta || update.meta.changes < 1) return redirect("/login?notice=invalid");
+  if (!update.meta || update.meta.changes < 1) return redirect(loginPath({ notice: "invalid", next }));
   const sessionToken = randomToken();
   const csrf = randomToken();
   const now = nowIso();
   await db.prepare(`INSERT INTO sessions (id, token_hash, email, csrf_token, expires_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), await sha256(sessionToken), row.email, csrf, new Date(Date.now() + SESSION_TTL_MS).toISOString(), now).run();
-  return redirect("/hub", sessionCookie(sessionToken, Math.floor(SESSION_TTL_MS / 1000)));
+  const destination = signInDestination(adminEmails(env).includes(row.email), next);
+  return redirect(destination, sessionCookie(sessionToken, Math.floor(SESSION_TTL_MS / 1000)));
 }
 
 async function logout(request, env, db, redirect, page) {
@@ -406,12 +409,12 @@ async function logout(request, env, db, redirect, page) {
 
 async function adminRoutes(request, env, db, url, page, redirect) {
   const session = await loadSession(db, request);
-  if (!session) return redirect("/login");
+  if (!session) return redirect(loginPath({ next: `${url.pathname}${url.search}` }));
   const admin = adminEmails(env).includes(session.email);
   if (!admin) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: false }), 404);
   const path = url.pathname;
   if (path === "/admin" && (request.method === "GET" || request.method === "HEAD")) return listApplications(env, db, url, session, page);
-  const applicationMatch = path.match(/^\/admin\/applications\/([0-9a-f-]{36})(\/approve|\/deny)?$/);
+  const applicationMatch = path.match(/^\/admin\/applications\/([0-9a-f-]{36})(\/approve|\/deny|\/notes)?$/);
   if (applicationMatch) return applicationRoute(request, env, db, session, applicationMatch[1], applicationMatch[2] || "", page, redirect);
   if (path === "/admin/members" && (request.method === "GET" || request.method === "HEAD")) return listMembers(db, session, page);
   const memberMatch = path.match(/^\/admin\/members\/([0-9a-f-]{36})(\/notes)?$/);
@@ -442,16 +445,92 @@ async function listApplications(env, db, url, session, page) {
 async function applicationRoute(request, env, db, session, id, action, page, redirect) {
   const application = await db.prepare("SELECT * FROM applications WHERE id = ?").bind(id).first();
   if (!application) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 404);
-  if (request.method === "POST" && (action === "/approve" || action === "/deny")) {
+  if (request.method === "POST" && (action === "/approve" || action === "/deny" || action === "/notes")) {
     const form = await request.formData();
     if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+    if (action === "/notes") return addApplicationNote(db, session, application, form, page, redirect);
     if (action === "/approve") await approveApplication(env, db, application, session.email);
     else await denyApplication(db, application, session.email);
     return redirect(`/admin/applications/${id}`);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
-  const saved = application.mailerlite_detail || (application.status === "approved" ? "" : "");
-  return page(renderApplicationDetail({ session, application, fields: parseFields(application.fields_json), message: saved && application.status === "approved" ? saved : "" }));
+  const pageUrl = new URL(request.url);
+  const parts = [];
+  if (pageUrl.searchParams.get("noted") === "1") parts.push("Note saved.");
+  if (application.status === "approved" && application.mailerlite_detail) parts.push(application.mailerlite_detail);
+  return showApplication(db, session, application, parts.join(" "), "", 200, page);
+}
+
+function missingTable(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such table/i.test(message);
+}
+
+async function showApplication(db, session, application, message, noteDraft, status, page) {
+  const loaded = await loadApplicationNotes(db, application.id);
+  return page(renderApplicationDetail({
+    session,
+    application,
+    fields: parseFields(application.fields_json),
+    notes: loaded.notes,
+    message,
+    noteDraft,
+    notesReady: loaded.ready,
+  }), status);
+}
+
+async function loadApplicationNotes(db, applicationId) {
+  try {
+    const result = await db.prepare(
+      "SELECT id, author_email, body, created_at FROM application_notes WHERE application_id = ? ORDER BY created_at"
+    ).bind(applicationId).all();
+    return { notes: result.results || [], ready: true };
+  } catch (error) {
+    if (missingTable(error)) return { notes: [], ready: false };
+    throw error;
+  }
+}
+
+async function addApplicationNote(db, session, application, form, page, redirect) {
+  const loaded = await loadApplicationNotes(db, application.id);
+  if (!loaded.ready) return showApplication(db, session, application, "", "", 503, page);
+  const body = String(form.get("note") || "").replace(/\r\n/g, "\n").trim();
+  if (!body) return showApplication(db, session, application, "Write a note before saving.", "", 400, page);
+  if (body.length > NOTE_BODY_LIMIT) return showApplication(db, session, application, "A note can be up to 4,000 characters.", body, 400, page);
+  const now = nowIso();
+  await db.prepare(`INSERT INTO application_notes (id, application_id, author_email, body, created_at)
+    VALUES (?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), application.id, session.email, body, now).run();
+  if (application.status === "approved") {
+    const member = await db.prepare("SELECT id FROM members WHERE email = ?").bind(normalizeEmail(application.email)).first();
+    if (member) await carryApplicationNotes(db, application, member.id);
+  }
+  return redirect(`/admin/applications/${application.id}?noted=1`);
+}
+
+async function carryApplicationNotes(db, application, memberId) {
+  if (!memberId) return;
+  let result;
+  try {
+    result = await db.prepare(`SELECT id, author_email, body, created_at FROM application_notes
+      WHERE application_id = ? AND copied_at IS NULL
+      ORDER BY created_at`).bind(application.id).all();
+  } catch (error) {
+    if (missingTable(error)) return;
+    throw error;
+  }
+  const pending = result.results || [];
+  if (!pending.length) return;
+  const existing = await db.prepare("SELECT body FROM member_admin_notes WHERE member_id = ?").bind(memberId).first();
+  const blocks = pending.map((note) => applicationNoteText(note, application.network));
+  const merged = mergeAdminNotes(existing?.body || "", blocks, NOTE_LIMIT);
+  const now = nowIso();
+  if (merged.changed) {
+    await db.prepare(`INSERT INTO member_admin_notes (member_id, body, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(member_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`).bind(memberId, merged.body, now).run();
+  }
+  for (const index of merged.fitted) {
+    await db.prepare("UPDATE application_notes SET copied_at = ? WHERE id = ? AND copied_at IS NULL").bind(now, pending[index].id).run();
+  }
 }
 
 async function approveApplication(env, db, application, reviewer) {
@@ -475,6 +554,7 @@ async function approveApplication(env, db, application, reviewer) {
     detail = result.detail;
   }
   await db.prepare(`UPDATE applications SET status = 'approved', reviewed_at = ?, reviewed_by = ?, mailerlite_status = ?, mailerlite_detail = ? WHERE id = ?`).bind(now, reviewer, status, detail, application.id).run();
+  await carryApplicationNotes(db, application, memberId);
 }
 
 async function denyApplication(db, application, reviewer) {
@@ -539,6 +619,16 @@ async function loadMember(db, id) {
   const networks = await db.prepare("SELECT network FROM memberships WHERE member_id = ? AND status = 'approved' ORDER BY network").bind(id).all();
   const fields = await db.prepare("SELECT id, label, value FROM member_profile_fields WHERE member_id = ? ORDER BY sort_order, label").bind(id).all();
   const applications = await db.prepare("SELECT id, network, status, submitted_at, fields_json FROM applications WHERE email = ? ORDER BY submitted_at DESC").bind(row.email).all();
+  let applicationNotes = { results: [] };
+  try {
+    applicationNotes = await db.prepare(`SELECT n.id, n.author_email, n.body, n.created_at, a.network
+      FROM application_notes n
+      JOIN applications a ON a.id = n.application_id
+      WHERE a.email = ?
+      ORDER BY n.created_at`).bind(row.email).all();
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
   return {
     member: {
       id: row.id,
@@ -557,6 +647,7 @@ async function loadMember(db, id) {
     },
     fields: fields.results || [],
     applications: (applications.results || []).map((item) => ({ ...item, fields: parseFields(item.fields_json) })),
+    applicationNotes: applicationNotes.results || [],
   };
 }
 
@@ -693,7 +784,7 @@ async function removeImage(env, db, item, redirect) {
 
 async function memberRoutes(request, env, db, url, page, redirect) {
   const session = await loadSession(db, request);
-  if (!session) return redirect("/login");
+  if (!session) return redirect(loginPath({ next: `${url.pathname}${url.search}` }));
   const admin = adminEmails(env).includes(session.email);
   const memberships = await approvedNetworks(db, session.email);
   const path = url.pathname;

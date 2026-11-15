@@ -63,6 +63,100 @@ export function networkLabel(network) {
   return "";
 }
 
+export function phoneDisplay(value) {
+  const raw = String(value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return raw;
+}
+
+export function phoneHref(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `tel:+1${digits}`;
+  if (!digits || !/^[\d+().\-\s]+$/.test(raw)) return "";
+  return `tel:${raw.replace(/\s/g, "")}`;
+}
+
+export function externalUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.length > 500 || /[\s<>"'\\]/.test(raw) || raw.startsWith("//")) return "";
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw);
+  if (!hasScheme) {
+    const host = raw.split("/")[0].split("?")[0].split("#")[0].replace(/:\d+$/, "");
+    if (!/^[a-z0-9.-]*\.[a-z]{2,}\.?$/i.test(host)) return "";
+  }
+  return safeUrl(hasScheme ? raw : `https://${raw}`);
+}
+
+export function safeReturnPath(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.length > 500 || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return "";
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return "";
+  let url;
+  try {
+    url = new URL(raw, "https://waltonleaders.org");
+  } catch {
+    return "";
+  }
+  if (url.origin !== "https://waltonleaders.org" || url.username || url.password) return "";
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path !== "/admin" && path !== "/hub" && !path.startsWith("/admin/") && !path.startsWith("/hub/")) return "";
+  return `${path}${url.search}`;
+}
+
+export function signInDestination(isAdmin, next) {
+  const safe = safeReturnPath(next);
+  if (safe) return safe;
+  return isAdmin ? "/admin" : "/hub";
+}
+
+export function loginPath({ notice = "", sent = false, next = "" } = {}) {
+  const params = new URLSearchParams();
+  if (sent) params.set("sent", "1");
+  if (notice) params.set("notice", notice);
+  const safe = safeReturnPath(next);
+  if (safe) params.set("next", safe);
+  const query = params.toString();
+  return query ? `/login?${query}` : "/login";
+}
+
+export function verifyLinkPath(token, next) {
+  const params = new URLSearchParams();
+  params.set("token", String(token ?? ""));
+  const safe = safeReturnPath(next);
+  if (safe) params.set("next", safe);
+  return `/login/verify?${params.toString()}`;
+}
+
+export function applicationNoteText(note, network) {
+  const when = formatWhen(note?.created_at) || "Unknown time";
+  const author = String(note?.author_email || "").trim() || "Admin";
+  const where = networkLabel(network) || "Network";
+  const body = String(note?.body || "").replace(/\r\n/g, "\n").trim();
+  return `${when} · ${author} · ${where} application\n${body}`;
+}
+
+export function mergeAdminNotes(existing, blocks, limit = 10000) {
+  let body = String(existing ?? "");
+  const start = body;
+  const fitted = [];
+  blocks.forEach((block, index) => {
+    const text = String(block ?? "");
+    if (!text) return;
+    if (body.includes(text)) {
+      fitted.push(index);
+      return;
+    }
+    const next = body ? `${body}\n\n${text}` : text;
+    if (next.length > limit) return;
+    body = next;
+    fitted.push(index);
+  });
+  return { body, fitted, changed: body !== start };
+}
+
 function inlineMarkdown(raw) {
   const pattern = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
   const parts = [];
