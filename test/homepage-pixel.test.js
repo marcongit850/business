@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { renderLogin } from "../src/hub-pages.js";
 
 const source = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 
@@ -33,7 +34,6 @@ const pages = {
   JOIN: extract("JOIN"),
   THANKS_JOIN: extract("THANKS_JOIN"),
   THANKS_CONTACT: extract("THANKS_CONTACT"),
-  LOGIN: extract("LOGIN"),
 };
 
 test("homepage head includes the Meta Pixel base code after the existing GA4 snippet", () => {
@@ -51,8 +51,13 @@ test("homepage head includes the Meta Pixel base code after the existing GA4 sni
 });
 
 test("the pixel is not on join, login, or the confirmation pages", () => {
-  for (const name of ["JOIN", "THANKS_CONTACT", "LOGIN"]) {
-    const html = pages[name];
+  const loginPages = [
+    renderLogin(),
+    renderLogin({ network: "business" }),
+    renderLogin({ network: "builders" }),
+    renderLogin({ network: "tourism" }),
+  ];
+  for (const [name, html] of [...Object.entries(pages).filter(([name]) => name !== "HOME" && name !== "THANKS_JOIN"), ...loginPages.map((html, index) => [`login-${index}`, html])]) {
     assert.equal(html.includes("fbq"), false, name);
     assert.equal(html.includes("fbevents.js"), false, name);
     assert.equal(html.includes("facebook.com/tr"), false, name);
@@ -70,7 +75,9 @@ test("GA4 stays on the pages that already had it", () => {
     assert.ok(pages[name].includes("G-SFZ02T5TXS"), name);
     assert.ok(pages[name].includes("googletagmanager.com/gtag/js"), name);
   }
-  assert.equal(pages.LOGIN.includes("googletagmanager.com"), false);
+  for (const html of [renderLogin(), renderLogin({ network: "builders" })]) {
+    assert.equal(html.includes("googletagmanager.com"), false);
+  }
 });
 
 test("content security policy allows the pixel loader and keeps the Google hosts", () => {
