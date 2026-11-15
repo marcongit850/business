@@ -85,6 +85,7 @@ export function validateContent(input) {
   const requested = cleanLine(input.slug).toLowerCase();
   const slug = requested || slugify(title);
   if (!isSlug(slug)) return { error: "Use a slug of lowercase letters, numbers, and hyphens." };
+  if (slug === "profile" || slug === "flag" || slug === "welcome") return { error: "That slug is reserved. Pick another one." };
   const body = String(input.body ?? "").replace(/\r\n/g, "\n");
   if (body.length > 20000) return { error: "Body is too long." };
   const description = String(input.description ?? "").replace(/\r\n/g, "\n").trim();
@@ -107,6 +108,7 @@ export function validateContent(input) {
       description,
       link_url: link,
       pinned: input.pinned ? 1 : 0,
+      share_all: input.share_all ? 1 : 0,
       image_alt: alt,
     },
   };

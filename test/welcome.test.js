@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { FLAG_PROMPT, FLAG_THANKS, WELCOME_COPY, renderNetworkHub } from "../src/hub-pages.js";
+import { FLAG_PROMPT, FLAG_THANKS, WELCOME_COPY, renderNetworkHub, renderWelcome } from "../src/hub-pages.js";
+import { welcomeExcerpt } from "../src/hub-copy.js";
 import { NETWORKS } from "../src/networks.js";
 
 function textOf(html) {
@@ -34,9 +35,15 @@ test("each hub shows only that network's welcome, with the join and Facebook lin
       resources: [],
       stories: [],
     });
-    assert.match(html, /No announcements yet/);
-    assert.match(html, /No resources yet/);
-    const welcome = html.slice(html.indexOf('<section class="welcome"'), html.indexOf('<section class="flag-issue"'));
+    assert.match(html, new RegExp(`Welcome from ${NETWORKS[network].name}`));
+    assert.match(html, new RegExp(`href="/hub/${network}/welcome"`));
+    assert.match(textOf(html), new RegExp(welcomeExcerpt(WELCOME_COPY.networks[network]).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const page = renderWelcome({
+      session: { email: "ada@example.com", csrf: "csrf" },
+      admin: false,
+      network,
+    });
+    const welcome = page.slice(page.indexOf('<section class="welcome"'), page.indexOf("Back to the hub"));
     const paragraphs = [...welcome.matchAll(/<p>([\s\S]*?)<\/p>/g)].map((match) => textOf(match[1]));
     assert.deepEqual(paragraphs, [
       WELCOME_COPY.opening,
@@ -45,16 +52,16 @@ test("each hub shows only that network's welcome, with the join and Facebook lin
     ]);
     for (const other of ["business", "builders", "tourism"].filter((id) => id !== network)) {
       assert.equal(welcome.includes(WELCOME_COPY.networks[other]), false, other);
+      assert.equal(html.includes(WELCOME_COPY.networks[other]), false, other);
     }
     assert.match(welcome, new RegExp(`href="${NETWORKS[network].join.replace(/[.]/g, "\\.")}"`));
     assert.match(welcome, /target="_blank" rel="noopener"/);
     assert.equal(welcome.includes("noreferrer"), false);
     assert.match(welcome, new RegExp(`href="${NETWORKS[network].facebook.replace(/[.]/g, "\\.")}"`));
-    const flag = html.slice(html.indexOf('<section class="flag-issue"'), html.indexOf('<section class="my-issues"'));
-    assert.match(flag, new RegExp(`href="/hub/${network}/flag"`));
-    assert.match(flag, />Flag an Issue</);
-    assert.match(flag, new RegExp(FLAG_PROMPT.replace(/[?]/g, "\\?")));
-    assert.match(html, /Issues you've flagged/);
+    assert.match(html, new RegExp(`href="/hub/${network}/flag"`));
+    assert.match(html, />Flag an Issue</);
+    assert.match(html, new RegExp(FLAG_PROMPT.replace(/[?]/g, "\\?")));
+    assert.match(html, /Your flagged issues/);
     assert.match(html, /None yet/);
     assert.match(html, /a\.flag-button[\s\S]*background: var\(--accent/);
     assert.match(html, /@media \(max-width: 800px\)[\s\S]*\.welcome \{ padding: 16px 14px 2px; \}/);
