@@ -346,9 +346,20 @@ test("member pages escape application notes and keep them off the hub", () => {
   assert.match(detail, /From applications/);
   assert.match(detail, /&lt;i&gt;from the application&lt;\/i&gt;/);
   assert.equal(detail.includes("<i>from the application</i>"), false);
-  assert.match(detail, /<dt>Years in Walton<\/dt>/);
-  assert.match(detail, /class="response-empty">Not provided</);
-  assert.match(detail, /href="tel:\+18505550199"/);
+  assert.match(detail, /<dt>Years in Walton<\/dt><dd>4 years<\/dd>/);
+  assert.match(detail, /<dt>Phone<\/dt><dd>8505550199<\/dd>/);
+  assert.match(detail, /<details class="app-answers"><summary>Answers<\/summary>/);
+  assert.equal(/<details[^>]*\sopen/.test(detail), false);
+  assert.equal(detail.includes(">Not provided<"), false);
+  assert.equal(detail.includes('href="tel:+18505550199"'), false);
+  assert.match(detail, /href="mailto:ada@example.com"/);
+  assert.match(detail, /Not provided: Business or company, Role or title, Phone, Location, Website, Bio/);
+  assert.equal(detail.includes("No custom fields yet."), false);
+  assert.equal(detail.includes("<h2>Custom fields</h2>"), false);
+  assert.match(detail, /pill-approved">Approved</);
+  assert.match(detail, /class="container hub-main member-view"/);
+  assert.match(detail, /Edit profile/);
+  assert.match(detail, /Delete member/);
   assert.match(detail, /Open application/);
   const hub = renderNetworkHub({
     session: { email: "ada@example.com", csrf: "csrf" },
@@ -367,6 +378,70 @@ test("member pages escape application notes and keep them off the hub", () => {
   assert.equal(hub.includes("From applications"), false);
   assert.equal(profile.includes("From applications"), false);
   assert.equal(profile.includes("from the application"), false);
+  assert.match(profile, /action="\/hub\/profile"/);
+  assert.equal(profile.includes("/admin/members/"), false);
+});
+
+test("admin member detail is a compact profile and collapsed answers", () => {
+  const detail = renderMemberDetail({
+    session: { email: "marc@whpinc.com", csrf: "csrf" },
+    member: {
+      id: "55555555-5555-4555-8555-555555555555",
+      email: "352marc@gmail.com",
+      display_name: "Marc Douglass",
+      networks: ["builders", "business", "tourism"],
+    },
+    profile: {
+      name: "Marc Douglass",
+      company: "Misc",
+      role_title: "Owner",
+      phone: "3524940644",
+      location: "",
+      website: "https://example.com/marc",
+      bio: "",
+    },
+    fields: [{ id: "field-1", label: "Slip", value: "A <12>" }],
+    applications: [{
+      id: "11111111-1111-4111-8111-111111111111",
+      network: "business",
+      status: "approved",
+      submitted_at: "2026-11-15T21:58:00.000Z",
+      fields: { name: "Marc Douglass", phone: "3524940644", about: "Line one.\nLine two." },
+    }],
+    notes: "",
+  });
+  assert.match(detail, /href="mailto:352marc@gmail.com"/);
+  assert.match(detail, /href="tel:\+13524940644"/);
+  assert.match(detail, /\(352\) 494-0644/);
+  assert.match(detail, /href="https:\/\/example\.com\/marc" target="_blank" rel="noopener"/);
+  assert.match(detail, /Not provided: Location, Bio/);
+  assert.equal(detail.includes("<dt>Location</dt>"), false);
+  assert.equal(detail.includes("<dt>Bio</dt>"), false);
+  assert.equal(detail.includes("No custom fields yet."), false);
+  assert.match(detail, /<h2>Custom fields<\/h2>/);
+  assert.match(detail, /Slip/);
+  assert.match(detail, /A &lt;12&gt;/);
+  assert.match(detail, /<details class="app-answers"><summary>Answers<\/summary>[\s\S]*<dt>About<\/dt><dd>Line one\.\nLine two\.<\/dd>/);
+  assert.match(detail, /details\.app-answers:not\(\[open\]\) > :not\(summary\) \{ display: none; \}/);
+  assert.match(detail, /@media \(min-width: 800px\)[\s\S]*\.kv-row \{ grid-template-columns: minmax\(148px, 210px\)/);
+  assert.match(detail, /\.kv-row \{ display: grid; grid-template-columns: 1fr;/);
+  const own = renderMemberDetail({
+    session: { email: "352marc@gmail.com", csrf: "csrf" },
+    member: {
+      id: "55555555-5555-4555-8555-555555555555",
+      email: "352marc@gmail.com",
+      display_name: "Marc Douglass",
+      networks: ["business"],
+    },
+    profile: { name: "Marc Douglass", company: "Misc", role_title: "Owner", phone: "3524940644", location: "Seaside", website: "https://example.com", bio: "Here." },
+    fields: [],
+    applications: [],
+    notes: "",
+  });
+  assert.match(own, /Edit profile/);
+  assert.equal(own.includes("Delete member"), false);
+  assert.equal(own.includes("Not provided:"), false);
+  assert.equal(/[—–]/.test(detail + own), false);
 });
 
 test("phones, websites, return paths, and note copies stay safe", () => {

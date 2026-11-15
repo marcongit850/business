@@ -70,6 +70,36 @@ const CSS = `
 .hub-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .also-member { color: rgba(0, 24, 64, 0.72); }
 .login-notice { margin: 0 0 18px; }
+.member-view.hub-main { padding: 18px 0 40px; }
+.member-view h1 { margin: 0 0 6px; }
+.member-view h2 { margin: 12px 0 6px; font-size: 28px; line-height: 1.1; }
+.member-view .notice { margin: 0 0 10px; }
+.member-view .card { padding: 8px 12px; margin: 0 0 8px; }
+.member-view .stack { gap: 10px; }
+.member-view .note-list { margin: 0 0 10px; }
+.member-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; }
+.member-contact { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 15px; line-height: 1.4; }
+.member-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
+.member-tags .pill { margin: 0; }
+.member-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; }
+.member-actions .button { padding: 8px 12px; }
+.member-view .button.danger { background: #9b2335; color: #fff; border-color: #9b2335; }
+.member-view .button.danger:hover,
+.member-view .button.danger:focus-visible { background: #7d1c2b; color: #fff; }
+.kv-grid { display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; }
+.kv-row { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.kv-grid .kv-row:last-child { border-bottom: 0; }
+.member-view dt, .member-view dd { margin: 0; }
+.kv-row dt { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(0, 24, 64, 0.55); }
+.kv-row dd { font-size: 16px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+.member-missing { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: rgba(0, 24, 64, 0.55); }
+.app-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.app-line .meta, .app-line .pill { margin: 0; }
+.app-network { font-weight: 700; }
+.app-answers { margin-top: 4px; }
+.app-answers summary { cursor: pointer; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+.member-view details.app-answers:not([open]) > :not(summary) { display: none; }
+.app-answers .kv-grid { margin-top: 2px; }
 .welcome, .flag-issue, .my-issues { max-width: 760px; }
 .welcome {
   background: #fff; border: 1px solid var(--line); border-top: 4px solid var(--accent, var(--gold));
@@ -100,8 +130,10 @@ a.flag-button, button.flag-button {
   .field-row { grid-template-columns: 1fr 1.4fr auto; align-items: end; }
   .response-grid { grid-template-columns: 1fr 1fr; }
   .response-wide { grid-column: 1 / -1; }
+  .kv-row { grid-template-columns: minmax(148px, 210px) minmax(0, 1fr); column-gap: 16px; align-items: start; }
 }
 @media (max-width: 800px) {
+  body:has(.member-view) .site-header .header-inner { height: auto; min-height: 0; padding: 12px 0; }
   .hub-table thead { display: none; }
   .hub-table, .hub-table tbody, .hub-table tr, .hub-table td { display: block; width: 100%; }
   .hub-table td { border: 0; padding: 4px 0; }
@@ -128,7 +160,7 @@ function networkFooter(brand, also) {
   </footer>`;
 }
 
-function shell({ title, body, session, admin, network, also, header }) {
+function shell({ title, body, session, admin, network, also, header, mainClass = "" }) {
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
   const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
@@ -182,7 +214,7 @@ function shell({ title, body, session, admin, network, also, header }) {
       <nav class="hub-nav" aria-label="Account">${links}</nav>
     </div>
   </header>
-  <main id="content" class="container hub-main">${body}${mode === "network" ? networkFooter(brand, also) : ""}</main>
+  <main id="content" class="container hub-main${mainClass ? ` ${mainClass}` : ""}">${body}${mode === "network" ? networkFooter(brand, also) : ""}</main>
 </body>
 </html>`;
 }
@@ -564,7 +596,7 @@ export function renderApplicationDetail({ session, application, fields, notes = 
   });
 }
 
-export function renderMembers({ session, rows }) {
+export function renderMembers({ session, rows, message = "" }) {
   const bodyRows = rows.length
     ? rows.map((row) => `<tr>
         <td><a class="text-link" href="/admin/members/${escapeHtml(row.id)}">${escapeHtml(row.display_name)}</a><div class="meta">${escapeHtml(row.email)}</div></td>
@@ -575,40 +607,157 @@ export function renderMembers({ session, rows }) {
     title: "Members · Walton County Business Leaders",
     session,
     admin: true,
-    body: `<p class="eyebrow">Admin</p><h1>Members</h1><p class="lede">Approved members and the networks on their account.</p>
+    body: `<p class="eyebrow">Admin</p><h1>Members</h1>
+      ${notice(message)}
+      <p class="lede">Approved members and the networks on their account.</p>
       <table class="hub-table"><thead><tr><th>Member</th><th>Networks</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
   });
 }
 
+const PROFILE_ROWS = [
+  ["name", "Name"],
+  ["company", "Business or company"],
+  ["role_title", "Role or title"],
+  ["phone", "Phone"],
+  ["location", "Location"],
+  ["website", "Website"],
+  ["bio", "Bio"],
+];
+
+function sameAccount(session, member) {
+  return String(session?.email || "").trim().toLowerCase() === String(member?.email || "").trim().toLowerCase();
+}
+
+function profileText(key, value) {
+  const raw = String(value ?? "");
+  return key === "bio" ? raw.replace(/\r\n/g, "\n").trim() : raw.trim();
+}
+
+function profileValueHtml(key, value) {
+  const text = profileText(key, value);
+  if (!text) return "";
+  if (key === "phone") {
+    const display = phoneDisplay(text);
+    const href = phoneHref(text);
+    return href ? `<a class="text-link" href="${escapeHtml(href)}">${escapeHtml(display)}</a>` : escapeHtml(display);
+  }
+  if (key === "website") {
+    const href = externalUrl(text);
+    if (!href) return escapeHtml(text);
+    return `<a class="text-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`;
+  }
+  return escapeHtml(text);
+}
+
+function kvGrid(rows) {
+  if (!rows.length) return "";
+  return `<dl class="kv-grid">${rows.map(([label, value]) => `<div class="kv-row"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`).join("")}</dl>`;
+}
+
+function memberContact(email, phone) {
+  const parts = [];
+  const mail = String(email || "").trim();
+  if (mail) {
+    parts.push(isEmail(mail)
+      ? `<a class="text-link" href="mailto:${escapeHtml(mail)}">${escapeHtml(mail)}</a>`
+      : escapeHtml(mail));
+  }
+  const rawPhone = String(phone || "").trim();
+  if (rawPhone) {
+    const display = phoneDisplay(rawPhone);
+    const href = phoneHref(rawPhone);
+    parts.push(href
+      ? `<a class="text-link" href="${escapeHtml(href)}">${escapeHtml(display)}</a>`
+      : escapeHtml(display));
+  }
+  return parts.length ? `<p class="member-contact">${parts.join("")}</p>` : "";
+}
+
+function memberAnswerList(fields) {
+  const entries = orderedResponses(fields);
+  if (!entries.length) return `<p class="member-missing">No answers were stored.</p>`;
+  const rows = entries.map(([key, value]) => [responseLabel(key), escapeHtml(value == null ? "" : String(value))]);
+  return `<details class="app-answers"><summary>Answers</summary>${kvGrid(rows)}</details>`;
+}
+
+function profileEditor({ action, session, profile, fields }) {
+  const rows = (fields || []).map((field, index) => `<div class="field-row">
+    <input type="hidden" name="field_id" value="${escapeHtml(field.id)}">
+    <label>Label <input name="field_label" maxlength="60" value="${escapeHtml(field.label)}"></label>
+    <label>Value <input name="field_value" maxlength="1000" value="${escapeHtml(field.value)}"></label>
+    <label>Remove <input type="checkbox" name="field_remove" value="${index}"></label>
+  </div>`).join("");
+  const blanks = [0, 1, 2].map(() => `<div class="field-row">
+    <input type="hidden" name="field_id" value="">
+    <label>Label <input name="field_label" maxlength="60"></label>
+    <label>Value <input name="field_value" maxlength="1000"></label>
+    <input type="hidden" name="field_remove" value="">
+  </div>`).join("");
+  const form = (name, label, value, extra = "") => `<label>${label}<input name="${name}" ${extra} value="${escapeHtml(value || "")}"></label>`;
+  return `<form class="stack" method="post" action="${action}">
+    <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+    ${form("name", "Name", profile.name, 'maxlength="120" autocomplete="name"')}
+    ${form("company", "Business or company", profile.company, 'maxlength="160" autocomplete="organization"')}
+    ${form("role_title", "Role or title", profile.role_title, 'maxlength="120" autocomplete="organization-title"')}
+    ${form("phone", "Phone", profile.phone, 'maxlength="40" autocomplete="tel"')}
+    ${form("location", "Location", profile.location, 'maxlength="120"')}
+    ${form("website", "Website", profile.website, 'maxlength="300" autocomplete="url"')}
+    <label>Short bio<textarea name="bio" maxlength="2000">${escapeHtml(profile.bio || "")}</textarea></label>
+    <h2>Custom fields</h2>
+    <p>Add up to 20 label and value pairs. Labels can be 60 characters. Values can be 1,000.</p>
+    ${rows}${blanks}
+    <button class="button" type="submit">Save profile</button>
+  </form>`;
+}
+
 export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message }) {
+  const filled = [];
+  const missing = [];
+  for (const [key, label] of PROFILE_ROWS) {
+    const html = profileValueHtml(key, profile?.[key]);
+    if (html) filled.push([label, html]);
+    else missing.push(label);
+  }
+  const missingLine = missing.length ? `<p class="member-missing">Not provided: ${escapeHtml(missing.join(", "))}</p>` : "";
+  const custom = fields.length
+    ? `<h2>Custom fields</h2><section class="card">${kvGrid(fields.map((field) => [field.label, escapeHtml(field.value ?? "")]))}</section>`
+    : "";
   const apps = applications.length
-    ? applications.map((application) => `<section class="card"><h3>${escapeHtml(networkLabel(application.network))} · ${escapeHtml(application.status)}</h3><p class="meta">${escapeHtml(formatWhen(application.submitted_at))}</p><p class="meta"><a class="text-link" href="/admin/applications/${escapeHtml(application.id)}">Open application</a></p>${fieldList(application.fields)}</section>`).join("")
-    : "<p>No applications are stored for this email.</p>";
+    ? applications.map((application) => `<section class="card app-card">
+        <div class="app-line">
+          <span class="app-network">${escapeHtml(networkLabel(application.network) || String(application.network || "Application"))}</span>
+          ${statusPill(application.status)}
+          <span class="meta">${escapeHtml(formatWhen(application.submitted_at))}</span>
+          <a class="text-link" href="/admin/applications/${escapeHtml(application.id)}">Open application</a>
+        </div>
+        ${memberAnswerList(application.fields)}
+      </section>`).join("")
+    : `<p class="member-missing">No applications are stored for this email.</p>`;
+  const tags = member.networks.map((network) => `<span class="pill">${escapeHtml(networkLabel(network))}</span>`).join("");
   const carried = applicationNotes.length
     ? `<p class="note-heading">From applications</p>${renderNoteList(applicationNotes)}`
     : "";
-  const custom = fields.length
-    ? `<dl class="card">${fields.map((field) => `<dt>${escapeHtml(field.label)}</dt><dd style="white-space:pre-wrap">${escapeHtml(field.value)}</dd>`).join("")}</dl>`
-    : "<p>No custom fields yet.</p>";
+  const remove = sameAccount(session, member)
+    ? ""
+    : `<a class="button danger" href="/admin/members/${escapeHtml(member.id)}/delete">Delete member</a>`;
   return shell({
     title: `${member.display_name} · Member`,
     session,
     admin: true,
+    mainClass: "member-view",
     body: `<p class="eyebrow">Member</p><h1>${escapeHtml(member.display_name)}</h1>
       ${notice(message)}
-      <p class="meta">${escapeHtml(member.email)}</p>
-      <p>${member.networks.map((network) => `<span class="pill">${escapeHtml(networkLabel(network))}</span>`).join(" ")}</p>
+      <div class="member-meta">
+        ${memberContact(member.email, profile?.phone)}
+        ${tags ? `<div class="member-tags">${tags}</div>` : ""}
+      </div>
+      <div class="member-actions">
+        <a class="button" href="/admin/members/${escapeHtml(member.id)}/edit">Edit profile</a>
+        ${remove}
+      </div>
       <h2>Profile</h2>
-      <dl class="card">
-        <dt>Name</dt><dd>${escapeHtml(profile.name || "")}</dd>
-        <dt>Business or company</dt><dd>${escapeHtml(profile.company || "")}</dd>
-        <dt>Role or title</dt><dd>${escapeHtml(profile.role_title || "")}</dd>
-        <dt>Phone</dt><dd>${escapeHtml(profile.phone || "")}</dd>
-        <dt>Location</dt><dd>${escapeHtml(profile.location || "")}</dd>
-        <dt>Website</dt><dd>${escapeHtml(profile.website || "")}</dd>
-        <dt>Bio</dt><dd style="white-space:pre-wrap">${escapeHtml(profile.bio || "")}</dd>
-      </dl>
-      <h2>Custom fields</h2>${custom}
+      <section class="card">${kvGrid(filled)}${missingLine}</section>
+      ${custom}
       <h2>Applications</h2>${apps}
       <h2>Private notes</h2>
       <p class="meta">Only admins can see this. It is not shown in the member hub and it is not sent to MailerLite.</p>
@@ -618,6 +767,46 @@ export function renderMemberDetail({ session, member, profile, fields, applicati
         <label>Member notes<textarea name="notes" maxlength="10000">${escapeHtml(notes || "")}</textarea></label>
         <button class="button" type="submit">Save notes</button>
       </form>`,
+  });
+}
+
+export function renderMemberEdit({ session, member, profile, fields, message }) {
+  return shell({
+    title: `Edit profile · ${member.display_name}`,
+    session,
+    admin: true,
+    mainClass: "member-view",
+    body: `<p class="eyebrow">Member</p><h1>Edit profile</h1>
+      ${notice(message)}
+      <p class="meta">${escapeHtml(member.display_name)}</p>
+      ${memberContact(member.email, "")}
+      <p class="meta">Email stays as it is. Sign-in uses this address.</p>
+      <p class="meta"><a class="text-link" href="/admin/members/${escapeHtml(member.id)}">Back to member</a></p>
+      ${profileEditor({
+        action: `/admin/members/${escapeHtml(member.id)}/edit`,
+        session,
+        profile,
+        fields,
+      })}`,
+  });
+}
+
+export function renderMemberDelete({ session, member, message }) {
+  return shell({
+    title: `Delete member · ${member.display_name}`,
+    session,
+    admin: true,
+    mainClass: "member-view",
+    body: `<p class="eyebrow">Member</p><h1>Delete member</h1>
+      ${notice(message)}
+      <p>This removes ${escapeHtml(member.display_name)} (${escapeHtml(member.email)}) from the hub. The profile, network memberships, sign-in sessions, and flagged issues are deleted. Applications stay on file and are marked denied so they no longer grant membership.</p>
+      <p class="meta">Type the email address to confirm. This cannot be undone.</p>
+      <form class="stack" method="post" action="/admin/members/${escapeHtml(member.id)}/delete">
+        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+        <label>Email<input name="confirm_email" type="email" autocomplete="off" required value=""></label>
+        <button class="button danger" type="submit">Delete member</button>
+      </form>
+      <p class="meta"><a class="text-link" href="/admin/members/${escapeHtml(member.id)}">Back to member</a></p>`,
   });
 }
 
