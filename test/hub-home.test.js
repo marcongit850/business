@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { HUB_PRIORITIES, postsForHub, welcomeHeading } from "../src/hub-copy.js";
+import { HUB_PRIORITIES, postPlainText, postsForHub, welcomeHeading } from "../src/hub-copy.js";
 import { hubHero } from "../src/hub-hero.js";
 import { renderContentEditor, renderMemberItem, renderNetworkHub } from "../src/hub-pages.js";
 import { renderMarkdown } from "../src/text.js";
@@ -153,6 +153,42 @@ test("markdown images stay inert unless the address is http or https", () => {
   assert.equal((html.match(/<img/g) || []).length, 2);
   assert.equal(html.includes("javascript:"), false);
   assert.match(html, /<p>Bad<\/p>/);
+});
+
+test("photo credits render as small print on the hub and the post page", () => {
+  const body = "A short note about the shops.\n\nPhoto: [The Bushranger](https://commons.wikimedia.org/wiki/File:Shops_in_Seaside.jpg), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)";
+  const item = {
+    id: "photo",
+    network: "business",
+    status: "published",
+    type: "post",
+    title: "Seaside shops",
+    slug: "seaside-shops",
+    body,
+    description: "",
+    published_at: "2026-11-14T00:00:00.000Z",
+    pinned: 0,
+  };
+  const hub = renderNetworkHub({ session, network: "business", posts: [item], profile: { name: "Marc" } });
+  assert.match(hub, /<p class="fine-print">Photo: <a href="https:\/\/commons\.wikimedia\.org\/wiki\/File:Shops_in_Seaside\.jpg" rel="noopener noreferrer">The Bushranger<\/a>/);
+  assert.match(hub, /class="post-card"[\s\S]*class="fine-print"/);
+  assert.match(hub, /\.prose p\.fine-print, \.post-card \.prose p\.fine-print, \.post-read \.prose p\.fine-print \{[^}]*font-size: 12px;[^}]*color: #4a5563;/);
+  assert.equal(hub.includes("<small>"), false);
+  assert.equal(/[—–]/.test(hub), false);
+
+  const detail = renderMemberItem({ session, network: "business", item });
+  assert.match(detail, /class="card post-read"[\s\S]*<p class="fine-print">Photo: /);
+  assert.match(detail, /href="https:\/\/creativecommons\.org\/licenses\/by-sa\/4\.0\/"/);
+  assert.equal(detail.includes("<small>"), false);
+
+  const editor = renderContentEditor({
+    session,
+    item: { network: "business", type: "post", title: "Hello", slug: "hello", body: "", pinned: 0, image_alt: "" },
+  });
+  assert.match(editor, /A paragraph that starts with Photo: is shown as small print\./);
+  assert.match(editor, /Start any other paragraph with \^ and a space for the same small print\./);
+  assert.equal(/[—–]/.test(editor), false);
+  assert.equal(postPlainText("^ Filed away.\n\nPhoto: credit"), "Filed away. Photo: credit");
 });
 
 test("the content editor can target every network and keeps raw html as text", () => {

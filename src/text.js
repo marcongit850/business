@@ -253,14 +253,27 @@ function inlineMarkdown(raw) {
   return parts.join("");
 }
 
+function finePrintLine(line) {
+  const caret = /^\^\s+(.*)$/.exec(line);
+  if (caret) return caret[1].trim() || null;
+  if (/^photo:/i.test(line)) return line;
+  return null;
+}
+
 export function renderMarkdown(source) {
   const lines = String(source ?? "").replace(/\r\n/g, "\n").split("\n");
   const out = [];
   let paragraph = [];
+  let fine = false;
   const flush = () => {
-    if (!paragraph.length) return;
-    out.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
+    if (!paragraph.length) {
+      fine = false;
+      return;
+    }
+    const klass = fine ? ` class="fine-print"` : "";
+    out.push(`<p${klass}>${inlineMarkdown(paragraph.join(" "))}</p>`);
     paragraph = [];
+    fine = false;
   };
   let i = 0;
   while (i < lines.length) {
@@ -317,7 +330,16 @@ export function renderMarkdown(source) {
       out.push(`<ol>${items.join("")}</ol>`);
       continue;
     }
-    paragraph.push(line.trim());
+    const trimmed = line.trim();
+    const caption = finePrintLine(trimmed);
+    if (caption !== null) {
+      if (!fine) flush();
+      fine = true;
+      if (caption) paragraph.push(caption);
+      i += 1;
+      continue;
+    }
+    paragraph.push(trimmed);
     i += 1;
   }
   flush();
