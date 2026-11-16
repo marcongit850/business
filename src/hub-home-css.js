@@ -200,6 +200,7 @@ export const HUB_HOME_CSS = `
   border-radius: 999px;
 }
 .footer-social svg { display: block; width: 16px; height: 16px; }
+.footer-socials { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .contact-dialog {
   inset: unset;
   top: 50%;
