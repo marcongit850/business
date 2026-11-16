@@ -62,6 +62,42 @@ test("markdown keeps text and drops active content", () => {
   assert.equal(html.includes("javascript:"), false);
 });
 
+test("photo credits and caret lines render as small print", () => {
+  const credit = "Photo: [The Bushranger](https://commons.wikimedia.org/wiki/File:Shops_in_Seaside.jpg), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)";
+  const html = renderMarkdown([
+    "The shops are open.",
+    credit,
+    "",
+    "photo: lower case still counts",
+    "",
+    "^ Filed in the public record.",
+    "and the next line stays with it",
+    "",
+    "^ <small>no html</small> [bad](javascript:alert)",
+    "",
+    "A normal Photo: mention stays full size.",
+    "",
+    "# Photo: not a caption",
+    "",
+    "- Photo: list item",
+  ].join("\n"));
+  assert.match(html, /<p>The shops are open\.<\/p>/);
+  assert.match(html, /<p class="fine-print">Photo: <a href="https:\/\/commons\.wikimedia\.org\/wiki\/File:Shops_in_Seaside\.jpg" rel="noopener noreferrer">The Bushranger<\/a>, <a href="https:\/\/creativecommons\.org\/licenses\/by-sa\/4\.0\/" rel="noopener noreferrer">CC BY-SA 4\.0<\/a><\/p>/);
+  assert.match(html, /<p class="fine-print">photo: lower case still counts<\/p>/);
+  assert.match(html, /<p class="fine-print">Filed in the public record\. and the next line stays with it<\/p>/);
+  assert.match(html, /<p class="fine-print">&lt;small&gt;no html&lt;\/small&gt; bad<\/p>/);
+  assert.match(html, /<p>A normal Photo: mention stays full size\.<\/p>/);
+  assert.match(html, /<h2>Photo: not a caption<\/h2>/);
+  assert.match(html, /<li>Photo: list item<\/li>/);
+  assert.equal(html.includes("<small>"), false);
+  assert.equal(html.includes("<script>"), false);
+  assert.equal(html.includes("javascript:"), false);
+  assert.equal(html.includes("^"), false);
+  const blocks = html.split("\n");
+  assert.equal(blocks.some((line) => line.startsWith("<h2>") && line.includes("fine-print")), false);
+  assert.equal(blocks.some((line) => line.startsWith("<ul>") && line.includes("fine-print")), false);
+});
+
 test("images accept jpeg png and webp and strip metadata", () => {
   const jpeg = Buffer.from([
     0xff, 0xd8,

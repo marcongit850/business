@@ -81,6 +81,7 @@ export function postPlainText(source) {
     .replace(/\r\n/g, "\n")
     .replace(/!\[[^\]]*\]\([^)\n]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)\n]*\)/g, "$1")
+    .replace(/^\^\s+/gm, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^[>*-]\s+/gm, "")
     .replace(/[*_`]/g, "")

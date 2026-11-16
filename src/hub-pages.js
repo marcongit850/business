@@ -34,6 +34,13 @@ const CSS = `
 .prose p, .prose ul, .prose ol, .prose blockquote { margin: 0 0 14px; }
 .prose ul, .prose ol { padding-left: 1.2em; }
 .prose a, .text-link { text-decoration: underline; text-underline-offset: 3px; }
+.prose p.fine-print, .post-card .prose p.fine-print, .post-read .prose p.fine-print {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #4a5563;
+}
+.prose p.fine-print a { color: inherit; }
 .thumb { width: min(100%, 720px); height: auto; margin: 0 0 16px; }
 .grid-2 { display: grid; gap: 18px; }
 .preview-banner { background: var(--navy); color: var(--cream); padding: 10px 0; font-size: 14px; }
@@ -1089,7 +1096,7 @@ export function renderContentEditor({ session, item, message }) {
         <label>Description<textarea name="description" maxlength="1000">${escapeHtml(item.description || "")}</textarea></label>
         <label>Link<input name="link_url" maxlength="500" value="${escapeHtml(item.link_url || "")}" placeholder="https://example.com"></label>
         <label>Body<textarea name="body" maxlength="20000">${escapeHtml(item.body || "")}</textarea></label>
-        <p class="meta">Write plain text or Markdown. Raw HTML is shown as text, not run.</p>
+        <p class="meta">Write plain text or Markdown. Raw HTML is shown as text, not run. A paragraph that starts with Photo: is shown as small print. Start any other paragraph with ^ and a space for the same small print.</p>
         <label>Pin this item<input type="checkbox" name="pinned" value="1"${item.pinned ? " checked" : ""}></label>
         <label>Show on all networks<input type="checkbox" name="share_all" value="1"${item.share_all ? " checked" : ""}></label>
         <p class="meta">Checked items appear in Latest for every network. Leave it unchecked to keep this item on the network above.</p>
