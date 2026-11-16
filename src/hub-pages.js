@@ -323,6 +323,7 @@ function welcomeSection(network) {
 const FLAG_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>`;
 const INVITE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M4 19c.3-2.8 2.4-4.4 5-4.4s4.7 1.6 5 4.4"/><path d="M17 8v6M14 11h6"/></svg>`;
 const FACEBOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M14 13.5h2.75l.42-2.88H14V8.79c0-.79.22-1.33 1.35-1.33H17.5V4.82A18.3 18.3 0 0 0 14.86 4C12.15 4 10.25 5.66 10.25 8.45v2.17H7.5v2.88h2.75V20h3.75z"/></svg>`;
+const LINKEDIN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452z"/></svg>`;
 
 function actionCard({ href, title, body, icon, primary = false, external = false }) {
   const extra = external ? ` target="_blank" rel="noopener noreferrer"` : "";
@@ -457,7 +458,10 @@ function memberFooter(brand) {
       ${contactDialog()}
       <div class="footer-bottom">
         <span><a href="${escapeHtml(brand.site)}">${escapeHtml(brand.name)}</a> · Walton County, Florida</span>
-        <a class="footer-social" href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(brand.name)} Facebook group">${FACEBOOK_ICON}</a>
+        <span class="footer-socials">
+          <a class="footer-social" href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(brand.name)} Facebook group">${FACEBOOK_ICON}</a>
+          <a class="footer-social" href="https://www.linkedin.com/company/walton-county-business-leaders" target="_blank" rel="noopener noreferrer" aria-label="Walton County Business Leaders on LinkedIn">${LINKEDIN_ICON}</a>
+        </span>
       </div>
     </div>
   </footer>`;
