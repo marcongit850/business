@@ -69,6 +69,11 @@ export function formatWhen(iso) {
   }).format(date);
 }
 
+export function formatLoginWhen(iso) {
+  const when = formatWhen(iso);
+  return when ? `${when} CT` : "Never";
+}
+
 export function networkLabel(network) {
   if (network === "business") return "Business Leaders";
   if (network === "builders") return "Builders";
