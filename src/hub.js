@@ -494,6 +494,22 @@ async function requestLink(request, env, db, redirect, ui, network) {
   return redirect(loginPath({ sent: true, next: form.get("next"), network }));
 }
 
+async function recordLoginEvent(db, email, network, createdAt) {
+  const slug = networkId(network);
+  const address = normalizeEmail(email);
+  if (!slug || !address) return;
+  try {
+    await db.prepare("INSERT INTO login_events (id, email, network, created_at) VALUES (?, ?, ?, ?)").bind(
+      crypto.randomUUID(),
+      address,
+      slug,
+      createdAt || nowIso(),
+    ).run();
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
+}
+
 async function verifyLink(request, url, env, db, redirect) {
   const token = url.searchParams.get("token") || "";
   const next = url.searchParams.get("next");
@@ -508,6 +524,7 @@ async function verifyLink(request, url, env, db, redirect) {
   const now = nowIso();
   await db.prepare(`INSERT INTO sessions (id, token_hash, email, csrf_token, expires_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), await sha256(sessionToken), row.email, csrf, new Date(Date.now() + SESSION_TTL_MS).toISOString(), now).run();
+  await recordLoginEvent(db, row.email, requested, now);
   const memberships = await approvedNetworks(db, row.email);
   const isAdmin = adminEmails(env).includes(row.email);
   const destination = signInDestination(isAdmin, next, requested, memberships);
@@ -664,6 +681,7 @@ function missingColumn(error) {
 async function showApplication(db, session, application, message, noteDraft, status, page) {
   const loaded = await loadApplicationNotes(db, application.id);
   const memberNetworks = await approvedMemberships(db, normalizeEmail(application.email));
+  const logins = await loginStatsForEmail(db, application.email);
   return page(renderApplicationDetail({
     session,
     application,
@@ -673,6 +691,7 @@ async function showApplication(db, session, application, message, noteDraft, sta
     noteDraft,
     notesReady: loaded.ready,
     memberNetworks,
+    logins,
   }), status);
 }
 
@@ -842,20 +861,88 @@ function removedMemberMessage(url) {
   return `Removed ${email}. Profile, memberships, sign-in sessions, and flagged issues were deleted. Applications were kept and marked denied so they no longer grant membership.${mailerLine}`;
 }
 
-async function listMembers(db, session, page, url) {
-  const result = await db.prepare(`SELECT m.id, m.email, m.name, COALESCE(p.name, '') AS profile_name, GROUP_CONCAT(ms.network) AS networks
+async function loginStatsForEmail(db, email) {
+  const empty = { login_count: 0, last_login_at: "" };
+  const address = normalizeEmail(email);
+  if (!address) return empty;
+  try {
+    const row = await db.prepare("SELECT COUNT(*) AS login_count, MAX(created_at) AS last_login_at FROM login_events WHERE email = ?").bind(address).first();
+    return {
+      login_count: Number(row?.login_count) || 0,
+      last_login_at: row?.last_login_at || "",
+    };
+  } catch (error) {
+    if (missingTable(error)) return empty;
+    throw error;
+  }
+}
+
+async function loadMemberRows(db, withLogins) {
+  const loginSelect = withLogins
+    ? "COALESCE(logins.login_count, 0) AS login_count, logins.last_login_at AS last_login_at"
+    : "0 AS login_count, NULL AS last_login_at";
+  const loginJoin = withLogins
+    ? `LEFT JOIN (
+        SELECT lower(email) AS email, COUNT(*) AS login_count, MAX(created_at) AS last_login_at
+        FROM login_events
+        GROUP BY email COLLATE NOCASE
+      ) logins ON logins.email = m.email`
+    : "";
+  const loginGroup = withLogins ? ", logins.login_count, logins.last_login_at" : "";
+  const result = await db.prepare(`SELECT m.id, m.email, m.name, COALESCE(p.name, '') AS profile_name,
+      GROUP_CONCAT(ms.network) AS networks, ${loginSelect}
     FROM members m
     JOIN memberships ms ON ms.member_id = m.id AND ms.status = 'approved'
     LEFT JOIN member_profiles p ON p.member_id = m.id
-    GROUP BY m.id, m.email, m.name, p.name
-    ORDER BY lower(COALESCE(NULLIF(p.name, ''), m.name)), m.email`).bind().all();
-  const rows = (result.results || []).map((row) => ({
+    ${loginJoin}
+    GROUP BY m.id, m.email, m.name, p.name${loginGroup}`).bind().all();
+  return (result.results || []).map((row) => ({
     id: row.id,
     email: row.email,
     display_name: row.profile_name || row.name || row.email,
     networks: String(row.networks || "").split(",").filter(Boolean).sort(),
+    login_count: Number(row.login_count) || 0,
+    last_login_at: row.last_login_at || "",
   }));
-  return page(renderMembers({ session, rows, message: url ? removedMemberMessage(url) : "" }));
+}
+
+function sortMemberRows(rows, sort) {
+  const nameOf = (row) => String(row.display_name || row.email || "").toLowerCase();
+  return [...rows].sort((a, b) => {
+    if (sort === "logins") {
+      const byCount = (Number(b.login_count) || 0) - (Number(a.login_count) || 0);
+      if (byCount) return byCount;
+    } else if (sort === "last") {
+      const aTime = a.last_login_at || "";
+      const bTime = b.last_login_at || "";
+      if (aTime !== bTime) {
+        if (!aTime) return 1;
+        if (!bTime) return -1;
+        return aTime < bTime ? 1 : -1;
+      }
+    }
+    const byName = nameOf(a).localeCompare(nameOf(b));
+    if (byName) return byName;
+    return String(a.email || "").localeCompare(String(b.email || ""));
+  });
+}
+
+async function listMembers(db, session, page, url) {
+  const requested = String(url?.searchParams?.get("sort") || "");
+  const sort = requested === "logins" || requested === "last" ? requested : "name";
+  let rows;
+  try {
+    rows = await loadMemberRows(db, true);
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    rows = await loadMemberRows(db, false);
+  }
+  return page(renderMembers({
+    session,
+    rows: sortMemberRows(rows, sort),
+    sort,
+    message: url ? removedMemberMessage(url) : "",
+  }));
 }
 
 function profileFormInput(form) {
@@ -923,7 +1010,8 @@ async function memberRoute(request, env, db, session, id, action, url, page, red
     if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
     const notes = String(form.get("notes") || "").replace(/\r\n/g, "\n").trim();
     if (notes.length > NOTE_LIMIT) {
-      return page(renderMemberDetail({ ...member, session, message: "Notes are too long.", notes }), 400);
+      const logins = await loginStatsForEmail(db, member.member.email);
+      return page(renderMemberDetail({ ...member, session, message: "Notes are too long.", notes, logins }), 400);
     }
     await db.prepare(`INSERT INTO member_admin_notes (member_id, body, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(member_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`).bind(id, notes, nowIso()).run();
@@ -935,11 +1023,13 @@ async function memberRoute(request, env, db, session, id, action, url, page, red
   const noteRow = await db.prepare("SELECT body FROM member_admin_notes WHERE member_id = ?").bind(id).first();
   const saved = url.searchParams.get("saved");
   const message = saved === "1" ? "Notes saved." : saved === "profile" ? "Profile saved." : "";
+  const logins = await loginStatsForEmail(db, member.member.email);
   return page(renderMemberDetail({
     session,
     ...member,
     notes: noteRow?.body || "",
     message,
+    logins,
   }));
 }
 

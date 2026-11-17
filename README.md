@@ -14,4 +14,5 @@ The member hub needs a D1 database and a private R2 bucket before that deploy ca
 
 ```bash
 npm test
+npm run check
 ```

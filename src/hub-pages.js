@@ -2,7 +2,7 @@ import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, clipText, postPlain
 import { HUB_HOME_CSS } from "./hub-home-css.js";
 import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
-import { escapeHtml, externalUrl, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
+import { escapeHtml, externalUrl, formatLoginWhen, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
 
 const CSS = `
 .hub-main { padding: 42px 0 88px; }
@@ -23,6 +23,7 @@ const CSS = `
 .hub-table { width: 100%; border-collapse: collapse; background: #fff; }
 .hub-table th, .hub-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .hub-table th { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.hub-table .col-label { display: none; }
 .card { background: #fff; border: 1px solid var(--line); padding: 18px; margin: 0 0 16px; }
 .card h2, .card h3 { font-size: 32px; line-height: 1.1; margin-bottom: 8px; }
 .meta { color: var(--navy); font-size: 14px; letter-spacing: 0.03em; }
@@ -144,6 +145,7 @@ a.flag-button, button.flag-button {
 @media (max-width: 800px) {
   body:has(.member-view) .site-header .header-inner { height: auto; min-height: 0; padding: 12px 0; }
   .hub-table thead { display: none; }
+  .hub-table .col-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(0, 24, 64, 0.55); }
   .hub-table, .hub-table tbody, .hub-table tr, .hub-table td { display: block; width: 100%; }
   .hub-table td { border: 0; padding: 4px 0; }
   .hub-table tr { border-bottom: 1px solid var(--line); padding: 12px 0; }
@@ -686,6 +688,12 @@ function extraNetworkLabels(applied, networks) {
   return NETWORK_IDS.filter((id) => id !== applied && have.has(id)).map((id) => networkLabel(id)).filter(Boolean);
 }
 
+function loginLine(logins = {}) {
+  const count = Number(logins.login_count) || 0;
+  return `<p class="meta">Logins: ${escapeHtml(String(count))}</p>
+        <p class="meta">Last login: ${escapeHtml(formatLoginWhen(logins.last_login_at))}</p>`;
+}
+
 function networkMembershipCell(row) {
   const primary = escapeHtml(networkLabel(row.network));
   if (row.status !== "approved") return primary;
@@ -745,7 +753,7 @@ function networkChecks(applied, memberNetworks = []) {
   }).join("");
 }
 
-export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true, memberNetworks = [] }) {
+export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true, memberNetworks = [], logins = {} }) {
   const applied = networkById(application.network);
   const actions = `<form method="post" action="/admin/applications/${escapeHtml(application.id)}/approve">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
@@ -781,6 +789,7 @@ export function renderApplicationDetail({ session, application, fields, notes = 
         ${alsoLine}
         <p class="meta">Submitted ${escapeHtml(formatWhen(application.submitted_at))}</p>
         <p class="meta">${emailHtml}</p>
+        ${loginLine(logins)}
         ${reviewed}
         <p class="meta">MailerLite: ${escapeHtml(application.mailerlite_detail || "Not sent yet")}</p>
         ${sourceLine(application.source_url)}
@@ -802,21 +811,29 @@ export function renderApplicationDetail({ session, application, fields, notes = 
   });
 }
 
-export function renderMembers({ session, rows, message = "" }) {
+function memberSortLink(label, sort, current) {
+  const href = sort === "name" ? "/admin/members" : `/admin/members?sort=${sort}`;
+  const currentAttr = sort === current ? ` aria-current="true"` : "";
+  return `<a class="text-link" href="${href}"${currentAttr}>${escapeHtml(label)}</a>`;
+}
+
+export function renderMembers({ session, rows, sort = "name", message = "" }) {
   const bodyRows = rows.length
     ? rows.map((row) => `<tr>
         <td><a class="text-link" href="/admin/members/${escapeHtml(row.id)}">${escapeHtml(row.display_name)}</a><div class="meta">${escapeHtml(row.email)}</div></td>
         <td>${row.networks.map((network) => `<span class="pill">${escapeHtml(networkLabel(network))}</span>`).join(" ")}</td>
+        <td><span class="col-label">Logins</span>${escapeHtml(String(Number(row.login_count) || 0))}</td>
+        <td><span class="col-label">Last login</span>${escapeHtml(formatLoginWhen(row.last_login_at))}</td>
       </tr>`).join("")
-    : `<tr><td colspan="2">No approved members yet.</td></tr>`;
+    : `<tr><td colspan="4">No approved members yet.</td></tr>`;
   return shell({
     title: "Members · Walton County Business Leaders",
     session,
     admin: true,
     body: `<p class="eyebrow">Admin</p><h1>Members</h1>
       ${notice(message)}
-      <p class="lede">Approved members and the networks on their account.</p>
-      <table class="hub-table"><thead><tr><th>Member</th><th>Networks</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
+      <p class="lede">Approved members and the networks on their account. Logins count each successful sign-in.</p>
+      <table class="hub-table"><thead><tr><th>${memberSortLink("Member", "name", sort)}</th><th>Networks</th><th>${memberSortLink("Logins", "logins", sort)}</th><th>${memberSortLink("Last login", "last", sort)}</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
   });
 }
 
@@ -916,7 +933,7 @@ function profileEditor({ action, session, profile, fields }) {
   </form>`;
 }
 
-export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message }) {
+export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message, logins = {} }) {
   const filled = [];
   const missing = [];
   for (const [key, label] of PROFILE_ROWS) {
@@ -957,6 +974,7 @@ export function renderMemberDetail({ session, member, profile, fields, applicati
         ${memberContact(member.email, profile?.phone)}
         ${tags ? `<div class="member-tags">${tags}</div>` : ""}
       </div>
+      ${loginLine(logins)}
       <div class="member-actions">
         <a class="button" href="/admin/members/${escapeHtml(member.id)}/edit">Edit profile</a>
         ${remove}

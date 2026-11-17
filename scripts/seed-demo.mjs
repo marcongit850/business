@@ -10,6 +10,7 @@ const memberToken = "demo-member-session-token-0123456789abcdef";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 const sql = `
+DELETE FROM login_events;
 DELETE FROM application_notes;
 DELETE FROM member_profile_fields;
 DELETE FROM member_profiles;
