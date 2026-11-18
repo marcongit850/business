@@ -305,7 +305,7 @@ export const WELCOME_COPY = {
   closing: "We'll share current issues, documents, and our positions here as they're ready. In the meantime, two things help a lot: invite others who belong here, and join the conversation in our Facebook group.",
 };
 
-export const FLAG_PROMPT = "Something the county is doing that affects your business? Tell us.";
+export const FLAG_PROMPT = "Something happening in Walton County that the network should weigh in on? Let us know.";
 export const FLAG_THANKS = "Thanks, we'll look into it.";
 
 function welcomeSection(network) {

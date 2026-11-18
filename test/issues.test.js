@@ -300,7 +300,7 @@ test("flag form and admin detail escape answers and keep the network brand", () 
   assert.match(form, /action="\/hub\/builders\/flag"/);
   assert.match(form, /enctype="multipart\/form-data"/);
   assert.match(form, /Fee &lt;draft&gt;/);
-  assert.match(form, /Something the county is doing that affects your business\? Tell us\./);
+  assert.match(form, /Something happening in Walton County that the network should weigh in on\? Let us know\./);
   assert.equal(form.includes("Walton County Tourism Network"), false);
   const detail = renderFlaggedIssue({
     session: { csrf: "csrf-token" },
