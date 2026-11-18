@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { timingSafeEqual } from "node:crypto";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { createMemberIdea } from "../src/ideas.js";
 import { createFlaggedIssue } from "../src/issues.js";
 import { openHubDb } from "./d1.js";
 
@@ -138,6 +139,13 @@ test("admin can edit a member and delete only after confirmation", async () => {
   });
   assert.equal(created.ok, true);
   assert.equal(media.objects.size, 1);
+  const idea = await createMemberIdea(db, {
+    memberId: ADA,
+    network: "business",
+    body: "Keep a public calendar of county meetings.",
+    now: NOW,
+  });
+  assert.equal(idea.ok, true);
   const env = envFor(db, media);
   const calls = [];
   const originalFetch = globalThis.fetch;
@@ -269,6 +277,7 @@ test("admin can edit a member and delete only after confirmation", async () => {
     assert.equal(await count(db, "SELECT COUNT(*) AS n FROM magic_links WHERE email = ?", "ada@example.com"), 0);
     assert.equal(await count(db, "SELECT COUNT(*) AS n FROM flagged_issues WHERE member_id = ?", ADA), 0);
     assert.equal(await count(db, "SELECT COUNT(*) AS n FROM flagged_issue_files"), 0);
+    assert.equal(await count(db, "SELECT COUNT(*) AS n FROM member_ideas WHERE member_id = ?", ADA), 0);
     assert.equal(media.objects.size, 0);
     const application = await db.prepare("SELECT status, email FROM applications WHERE id = ?").bind(APP).first();
     assert.equal(application.status, "denied");
@@ -287,7 +296,7 @@ test("admin can edit a member and delete only after confirmation", async () => {
 
     const list = await call(env, new URL(location).pathname + new URL(location).search, { token: ADMIN_TOKEN });
     assert.equal(list.status, 200);
-    assert.match(await list.text(), /Removed ada@example.com\. Profile, memberships, sign-in sessions, and flagged issues were deleted/);
+    assert.match(await list.text(), /Removed ada@example.com\. Profile, memberships, sign-in sessions, flagged issues, and ideas were deleted/);
 
     globalThis.fetch = async () => {
       throw new Error("mailerlite down");
