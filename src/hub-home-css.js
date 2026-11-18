@@ -117,6 +117,16 @@ export const HUB_HOME_CSS = `
   color: var(--navy);
 }
 .action-card:not(.primary) .action-icon { border-color: rgba(208, 160, 64, 0.55); }
+button.action-card {
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+.install-card[hidden] { display: none; }
 .action-icon svg { width: 20px; height: 20px; display: block; }
 .action-card h2 {
   font-family: Source, Arial, sans-serif;
@@ -216,7 +226,35 @@ export const HUB_HOME_CSS = `
   color: #001840;
   box-shadow: 0 24px 80px rgba(0, 24, 64, 0.28);
 }
-.contact-dialog::backdrop { background: rgba(0, 24, 64, 0.55); }
+.contact-dialog::backdrop, dialog.contact-dialog::backdrop { background: rgba(0, 24, 64, 0.55); }
+dialog.contact-dialog { position: fixed; }
+.hub-dialog [hidden] { display: none; }
+.install-note { margin: 0 0 8px; font-size: 16px; line-height: 1.5; }
+.install-actions { margin: 0 0 18px; }
+.install-actions .button { cursor: pointer; font-family: inherit; }
+.install-steps { margin: 0 0 18px; }
+.install-steps h3 {
+  font-family: Source, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+.install-steps p { margin: 0 0 8px; font-size: 16px; line-height: 1.5; }
+.install-steps ol { margin: 0; padding-left: 1.2em; }
+.install-steps li { margin: 0 0 6px; font-size: 16px; line-height: 1.45; }
+.invite-message { margin: 0 0 16px; font-size: 16px; line-height: 1.5; }
+.share-actions { display: grid; gap: 10px; }
+.share-actions .button {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.invite-copied { margin: 12px 0 0; font-weight: 700; }
 .contact-dialog-inner { padding: 32px 28px 28px; }
 .contact-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .contact-dialog h2 { margin-top: 12px; font-size: 36px; line-height: 1.08; }
@@ -252,7 +290,7 @@ export const HUB_HOME_CSS = `
   .hub-hero-sub { font-size: 20px; }
   .hub-hero-seal { width: 168px; height: 168px; }
   .actions-wrap { margin-top: -52px; }
-  .action-grid { grid-template-columns: 1fr 1fr 1fr; gap: 22px; }
+  .action-grid { grid-template-columns: 1fr 1fr; gap: 22px; }
   .action-card { padding: 26px 26px 28px; }
   .action-card h2 { font-size: 19px; }
   .member-main { padding: 56px 0 88px; }
@@ -268,6 +306,9 @@ export const HUB_HOME_CSS = `
   .member-footer .footer-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 48px; padding-bottom: 34px; }
   .member-footer .closing { font-size: 30px; }
   .member-footer .footer-bottom { font-size: 12px; }
+}
+@media (min-width: 1180px) {
+  .action-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (min-width: 801px) and (max-width: 1040px) {
   .hub-hero h1 { font-size: 52px; }
@@ -302,5 +343,8 @@ export const HUB_HOME_CSS = `
   .hub-hero h1 { font-size: 36px; }
   .hub-nav a.hub-label { font-size: 11px; }
   .hub-nav a, .hub-nav button.sign-out { font-size: 12px; }
+}
+@media (display-mode: standalone) {
+  .install-card { display: none; }
 }
 `;

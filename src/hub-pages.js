@@ -1,7 +1,10 @@
 import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, clipText, postPlainText, postsForHub, welcomeExcerpt, welcomeHeading } from "./hub-copy.js";
 import { HUB_HOME_CSS } from "./hub-home-css.js";
+import { HUB_HOME_SCRIPT } from "./hub-home-script.js";
+import { emailHref, facebookHref, inviteShare, linkedinHref, smsHref, xHref } from "./hub-share.js";
 import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
+import { PWA_SHORT_NAMES, pwaAppleTouchPath, pwaManifestPath } from "./pwa.js";
 import { escapeHtml, externalUrl, formatLoginWhen, formatWhen, isEmail, networkLabel, phoneDisplay, phoneHref, renderMarkdown, safeUrl } from "./text.js";
 
 const CSS = `
@@ -170,6 +173,14 @@ function networkFooter(brand) {
   </footer>`;
 }
 
+function pwaHead(brand) {
+  if (!brand || !PWA_SHORT_NAMES[brand.id]) return "";
+  return `<link rel="manifest" href="${pwaManifestPath(brand.id)}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="${escapeHtml(PWA_SHORT_NAMES[brand.id])}">
+  <link rel="apple-touch-icon" href="${pwaAppleTouchPath(brand.id)}">`;
+}
+
 function shell({ title, body, session, admin, network, also, header, mainClass = "", bare = false }) {
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
@@ -220,6 +231,7 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#f6f3ec">
   <link rel="icon" href="/favicon.png" type="image/png">
+  ${pwaHead(brand)}
   <link rel="stylesheet" href="/styles.css">
   <style>${CSS}${HUB_HOME_CSS}</style>
 </head>
@@ -324,6 +336,7 @@ function welcomeSection(network) {
 
 const FLAG_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>`;
 const INVITE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M4 19c.3-2.8 2.4-4.4 5-4.4s4.7 1.6 5 4.4"/><path d="M17 8v6M14 11h6"/></svg>`;
+const PHONE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><line x1="11" y1="18.5" x2="13" y2="18.5"/></svg>`;
 const FACEBOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M14 13.5h2.75l.42-2.88H14V8.79c0-.79.22-1.33 1.35-1.33H17.5V4.82A18.3 18.3 0 0 0 14.86 4C12.15 4 10.25 5.66 10.25 8.45v2.17H7.5v2.88h2.75V20h3.75z"/></svg>`;
 const LINKEDIN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g transform="translate(4 4) scale(0.0357143)"><path fill="currentColor" d="M100.28 448H7.4V148.9h92.88zM53.79 108.1C24.09 108.1 0 83.5 0 53.8a53.79 53.79 0 0 1 107.58 0c0 29.7-24.1 54.3-53.79 54.3zM447.9 448h-92.68V302.4c0-34.7-.7-79.2-48.29-79.2-48.29 0-55.69 37.7-55.69 76.7V448h-92.78V148.9h89.08v40.8h1.3c12.4-23.5 42.69-48.3 87.88-48.3 94 0 111.28 61.9 111.28 142.3V448z"/></g></svg>`;
 const LINKEDIN_URL = "https://www.linkedin.com/company/walton-county-business-leaders";
@@ -336,6 +349,80 @@ function actionCard({ href, title, body, icon, primary = false, external = false
     <h2>${escapeHtml(title)}</h2>
     <p>${escapeHtml(body)}</p>
   </a>`;
+}
+
+function actionButton({ title, body, icon, dialog, extraClass = "" }) {
+  const klass = extraClass ? `action-card ${extraClass}` : "action-card";
+  return `<button type="button" class="${klass}" data-open-dialog="${escapeHtml(dialog)}">
+    <span class="action-icon">${icon}</span>
+    <h2>${escapeHtml(title)}</h2>
+    <p>${escapeHtml(body)}</p>
+  </button>`;
+}
+
+function installDialog() {
+  return `<dialog id="install-dialog" class="contact-dialog hub-dialog" aria-labelledby="install-dialog-title">
+    <div class="contact-dialog-inner">
+      <div class="contact-dialog-head">
+        <div>
+          <p class="eyebrow">Member Hub</p>
+          <h2 id="install-dialog-title">${escapeHtml(ACTION_COPY.appTitle)}</h2>
+        </div>
+        <button type="button" class="contact-close" data-close-dialog>Close</button>
+      </div>
+      <p>${escapeHtml(ACTION_COPY.appBody)}</p>
+      <p class="install-note">On a computer, choose Install if your browser offers it. On a phone, follow the steps for your device.</p>
+      <p class="install-actions"><button type="button" class="button" id="install-app-button" hidden>Install</button></p>
+      <div class="install-steps-list">
+        <section class="install-steps" data-platform="ios">
+          <h3>iPhone and iPad</h3>
+          <p>Open this page in Safari. On iPhone it must be opened in Safari.</p>
+          <ol>
+            <li>Tap the Share button.</li>
+            <li>Tap Add to Home Screen.</li>
+            <li>Tap Add.</li>
+          </ol>
+        </section>
+        <section class="install-steps" data-platform="android">
+          <h3>Android</h3>
+          <p>Open this page in Chrome.</p>
+          <ol>
+            <li>Tap the menu (three dots).</li>
+            <li>Tap Install app or Add to Home screen.</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  </dialog>`;
+}
+
+function inviteDialog(network) {
+  const share = inviteShare(network);
+  if (!share) return "";
+  const ios = smsHref("ios", share.message);
+  const android = smsHref("android", share.message);
+  return `<dialog id="invite-dialog" class="contact-dialog hub-dialog" aria-labelledby="invite-dialog-title">
+    <div class="contact-dialog-inner">
+      <div class="contact-dialog-head">
+        <div>
+          <p class="eyebrow">Member Hub</p>
+          <h2 id="invite-dialog-title">${escapeHtml(ACTION_COPY.inviteTitle)}</h2>
+        </div>
+        <button type="button" class="contact-close" data-close-dialog>Close</button>
+      </div>
+      <p class="invite-message">${escapeHtml(share.message)}</p>
+      <div class="share-actions">
+        <a class="button secondary" id="invite-text" href="${escapeHtml(android)}" data-ios="${escapeHtml(ios)}" data-android="${escapeHtml(android)}">Text</a>
+        <a class="button secondary" href="${escapeHtml(emailHref(share))}">Email</a>
+        <a class="button secondary" href="${escapeHtml(facebookHref(share.url))}" target="_blank" rel="noopener">Facebook</a>
+        <a class="button secondary" href="${escapeHtml(linkedinHref(share.url))}" target="_blank" rel="noopener">LinkedIn</a>
+        <a class="button secondary" href="${escapeHtml(xHref(share))}" target="_blank" rel="noopener">X</a>
+        <button type="button" class="button secondary" id="invite-copy" data-url="${escapeHtml(share.url)}">Copy link</button>
+        <button type="button" class="button secondary" id="invite-more" data-title="${escapeHtml(share.subject)}" data-text="${escapeHtml(share.message)}" data-url="${escapeHtml(share.url)}" hidden>More</button>
+      </div>
+      <p id="invite-copied" class="invite-copied" role="status" hidden>Copied</p>
+    </div>
+  </dialog>`;
 }
 
 function prioritySection(network) {
@@ -514,8 +601,9 @@ export function renderNetworkHub({ session, admin, network, top = [], resources 
       <div class="container actions-wrap">
         <div class="action-grid">
           ${actionCard({ href: `/hub/${network}/flag`, title: ACTION_COPY.flagTitle, body: FLAG_PROMPT, icon: FLAG_ICON, primary: true })}
-          ${brand ? actionCard({ href: brand.join, title: ACTION_COPY.inviteTitle, body: ACTION_COPY.inviteBody, icon: INVITE_ICON }) : ""}
+          ${brand ? actionButton({ title: ACTION_COPY.inviteTitle, body: ACTION_COPY.inviteBody, icon: INVITE_ICON, dialog: "invite-dialog" }) : ""}
           ${brand ? actionCard({ href: brand.facebook, title: ACTION_COPY.facebookTitle, body: ACTION_COPY.facebookBody, icon: FACEBOOK_ICON, external: true }) : ""}
+          ${actionButton({ title: ACTION_COPY.appTitle, body: ACTION_COPY.appBody, icon: PHONE_ICON, dialog: "install-dialog", extraClass: "install-card" })}
         </div>
       </div>
       <div class="member-main">
@@ -532,6 +620,9 @@ export function renderNetworkHub({ session, admin, network, top = [], resources 
         </div>
       </div>
       ${memberFooter(brand)}
+      ${installDialog()}
+      ${brand ? inviteDialog(network) : ""}
+      <script>${HUB_HOME_SCRIPT}</script>
     </div>`,
   });
 }

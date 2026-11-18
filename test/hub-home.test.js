@@ -116,7 +116,7 @@ test("Latest shows published posts for this network and all-network posts, newes
   assert.ok(newestAt < longAt && longAt < sharedAt && sharedAt < olderAt && olderAt < welcomeAt);
   assert.equal(html.includes("Builders only"), false);
   assert.equal(html.includes("Secret draft"), false);
-  assert.equal(html.includes("<script>"), false);
+  assert.equal(html.includes("<script>alert(1)</script>"), false);
   assert.equal(html.includes("javascript:"), false);
   assert.match(html, /href="\/hub\/business\/a-long-letter"/);
   assert.match(html, />Read more</);
