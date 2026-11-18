@@ -5,7 +5,8 @@ import { hubHero } from "./hub-hero.js";
 import { networkLogo } from "./network-logos.js";
 import { pwaAsset } from "./pwa.js";
 import { loginNetworkFromUrl } from "./networks.js";
-import { safeReturnPath } from "./text.js";
+import { normalizeReferralCode } from "./points.js";
+import { escapeHtml, safeReturnPath } from "./text.js";
 import { renderWhyWeExistPage } from "./why-we-exist.js";
 
 const HUB_NAV_SCRIPT = `<script>
@@ -81,6 +82,15 @@ function isEmail(value) {
 
 function field(form, name) {
   return clean(form.get(name));
+}
+
+function joinPage(ref) {
+  const code = normalizeReferralCode(ref);
+  const hidden = `<input type="hidden" name="ref" value="${escapeHtml(code)}">`;
+  return JOIN.replace(
+    '<form class="apply-form" action="/join" method="post">',
+    `<form class="apply-form" action="/join" method="post">\n          ${hidden}`,
+  );
 }
 
 function rawEmail(replyTo, subject, body) {
@@ -168,6 +178,7 @@ export default {
         await recordBusinessApplication(env, {
           name,
           email,
+          ref: field(form, "ref"),
           fields: {
             name,
             email,
@@ -217,7 +228,7 @@ export default {
       return new Response(request.method === "HEAD" ? null : SITEMAP_XML, { headers: { ...HEADERS, "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     }
     if (path === "/index.html") return html(request.method === "HEAD" ? null : HOME);
-    if (path === "/join" || path === "/join.html") return html(request.method === "HEAD" ? null : JOIN);
+    if (path === "/join" || path === "/join.html") return html(request.method === "HEAD" ? null : joinPage(url.searchParams.get("ref")));
     if (path === "/why-we-exist" || path === "/why-we-exist.html") return html(request.method === "HEAD" ? null : WHY_WE_EXIST);
     const loginNetwork = loginNetworkFromUrl(url);
     if (path === "/login" || path === "/login.html" || (loginNetwork && path.startsWith("/login/"))) {

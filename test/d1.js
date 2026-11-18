@@ -1,10 +1,18 @@
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-export function openHubDb() {
+export function openHubDb(options = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
-  for (const file of ["0001_hub.sql", "0002_application_notes.sql", "0003_flagged_issues.sql", "0004_content_share_all.sql", "0005_login_events.sql"]) {
+  const files = options.migrations || [
+    "0001_hub.sql",
+    "0002_application_notes.sql",
+    "0003_flagged_issues.sql",
+    "0004_content_share_all.sql",
+    "0005_login_events.sql",
+    "0006_referrals_points.sql",
+  ];
+  for (const file of files) {
     db.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
   }
   return {
@@ -26,6 +34,9 @@ export function openHubDb() {
           };
         },
       };
+    },
+    exec(sql) {
+      db.exec(sql);
     },
     close() {
       db.close();

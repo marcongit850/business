@@ -17,6 +17,7 @@ export const NETWORKS = {
     siteLabel: "waltonleaders.org",
     join: "https://waltonleaders.org/join",
     facebook: "https://www.facebook.com/groups/waltonbusinessleaders/",
+    linkedin: "https://www.linkedin.com/company/walton-county-business-leaders",
     accent: "#d0a040",
   },
   builders: {
@@ -30,6 +31,7 @@ export const NETWORKS = {
     siteLabel: "waltonbuildersnetwork.org",
     join: "https://waltonbuildersnetwork.org/join",
     facebook: "https://www.facebook.com/groups/waltonbuildersnetwork/",
+    linkedin: "https://www.linkedin.com/company/walton-county-builders-network",
     accent: "#d0a040",
   },
   tourism: {
@@ -43,6 +45,7 @@ export const NETWORKS = {
     siteLabel: "waltontourism.org",
     join: "https://waltontourism.org/join",
     facebook: "https://www.facebook.com/groups/waltontourism",
+    linkedin: "https://www.linkedin.com/company/waltontourism",
     accent: "#d0a040",
   },
 };

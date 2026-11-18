@@ -1,4 +1,5 @@
 import { networkId, NETWORK_IDS } from "./networks.js";
+import { normalizeReferralCode } from "./points.js";
 import { cleanLine, isEmail, isSlug, safeUrl, slugify } from "./text.js";
 
 export const NETWORKS = NETWORK_IDS;
@@ -39,6 +40,10 @@ export function validateIngest(body) {
     if (typeof value !== "string" || value.length > 4000) return { error: "Invalid input" };
     fields[key] = value;
   }
+  let ref = "";
+  if (typeof body.ref === "string") ref = normalizeReferralCode(body.ref);
+  if (!ref && typeof fields.ref === "string") ref = normalizeReferralCode(fields.ref);
+  delete fields.ref;
   return {
     value: {
       network: body.network,
@@ -47,6 +52,7 @@ export function validateIngest(body) {
       submitted_at: new Date(submitted).toISOString(),
       source_url: safeUrl(source),
       fields,
+      ref,
     },
   };
 }

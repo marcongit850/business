@@ -24,7 +24,7 @@ Apply the schema to the remote database:
 npx wrangler d1 migrations apply walton-hub --remote
 ```
 
-Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes. `migrations/0003_flagged_issues.sql` adds flagged issues and their file records. Apply it before members use Flag an Issue. The hub still loads without it. Saving an issue then says the migration is needed. `migrations/0004_content_share_all.sql` adds a checkbox so one published item can show in Latest on every network. Without it, items still publish on the network they were saved for, and the editor says the migration is needed if that box was checked. `migrations/0005_login_events.sql` stores one row each time a magic-link sign-in creates a session. The admin members list, member page, and application page show the count and the last sign-in in Central Time. Sign-in still works before this migration is applied. Those fields show 0 and Never until the table exists.
+Run that again after new migration files land. `migrations/0002_application_notes.sql` adds private application notes. Do not skip it, or the application page cannot load notes. `migrations/0003_flagged_issues.sql` adds flagged issues and their file records. Apply it before members use Flag an Issue. The hub still loads without it. Saving an issue then says the migration is needed. `migrations/0004_content_share_all.sql` adds a checkbox so one published item can show in Latest on every network. Without it, items still publish on the network they were saved for, and the editor says the migration is needed if that box was checked. `migrations/0005_login_events.sql` stores one row each time a magic-link sign-in creates a session. The admin members list, member page, and application page show the count and the last sign-in in Central Time. Sign-in still works before this migration is applied. Those fields show 0 and Never until the table exists. `migrations/0006_referrals_points.sql` adds a referral code per member per network, stores the referrer on each application, and adds `points_events`. Points are one total per member: 10 for being approved (welcome bonus), 10 when someone they referred is approved, 5 once for installing the app, and 2 each for following on Facebook and LinkedIn, once per network. The same file backfills the welcome bonus for members who are already approved. That backfill is safe to run again. The hub still loads before this migration is applied. Invite links then use the plain join page, new applications are saved without a referrer, and points show as 0.
 
 Local preview:
 
@@ -110,9 +110,12 @@ Header: `X-Hub-Key: <HUB_INGEST_KEY>`
   "email": "ada@example.com",
   "submitted_at": "2026-11-15T15:00:00.000Z",
   "source_url": "https://waltonbuildersnetwork.org/join",
+  "ref": "abcd2345",
   "fields": { "phone": "555-0100" }
 }
 ```
+
+`ref` is optional. A missing or unknown code is ignored and the application is still stored. If `ref` is omitted, a string `fields.ref` is used instead. Builders and Tourism already copy every join-form field into `fields`, but their join pages do not read `?ref=` yet, so they need a hidden `ref` input before a personal invite link is stored.
 
 `network` is `builders` or `tourism`. The body must be JSON, at most 64 KB, with string field values. Success is `201` and `{"ok":true,"id":"..."}`. A bad key is `401`. Invalid input is `400`. This is server to server, so the route does not send CORS headers.
 

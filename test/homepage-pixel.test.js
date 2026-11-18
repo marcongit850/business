@@ -67,7 +67,7 @@ test("the pixel is not on join, login, or the confirmation pages", () => {
 
 test("homepage is the only route that serves the home document", () => {
   assert.match(source, /if \(path === "\/index\.html"\) return html\(request\.method === "HEAD" \? null : HOME\);/);
-  assert.match(source, /if \(path === "\/join" \|\| path === "\/join\.html"\) return html\(request\.method === "HEAD" \? null : JOIN\);/);
+  assert.match(source, /if \(path === "\/join" \|\| path === "\/join\.html"\) return html\(request\.method === "HEAD" \? null : joinPage\(url\.searchParams\.get\("ref"\)\)\);/);
 });
 
 test("GA4 stays on the pages that already had it", () => {

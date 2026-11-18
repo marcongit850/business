@@ -2,6 +2,7 @@ import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, clipText, postPlain
 import { HUB_HOME_CSS } from "./hub-home-css.js";
 import { HUB_HOME_SCRIPT } from "./hub-home-script.js";
 import { emailHref, facebookHref, inviteShare, linkedinHref, smsHref, xHref } from "./hub-share.js";
+import { emptyPoints, POINTS_EARN, pointsBreakdown } from "./points.js";
 import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
 import { PWA_SHORT_NAMES, pwaAppleTouchPath, pwaManifestPath } from "./pwa.js";
@@ -396,8 +397,8 @@ function installDialog() {
   </dialog>`;
 }
 
-function inviteDialog(network) {
-  const share = inviteShare(network);
+function inviteDialog(network, referralCode = "") {
+  const share = inviteShare(network, referralCode);
   if (!share) return "";
   const ios = smsHref("ios", share.message);
   const android = smsHref("android", share.message);
@@ -423,6 +424,39 @@ function inviteDialog(network) {
       <p id="invite-copied" class="invite-copied" role="status" hidden>Copied</p>
     </div>
   </dialog>`;
+}
+
+function followButton(kind, done, label, doneLabel) {
+  return `<button type="button" class="follow-button" data-follow="${kind}"${done ? " disabled" : ""}>${escapeHtml(done ? doneLabel : label)}</button>`;
+}
+
+function socialCard(network, points) {
+  const brand = networkById(network);
+  if (!brand) return "";
+  const summary = points || emptyPoints();
+  return `<article class="action-card social-card">
+    <span class="action-icon social-icons">${FACEBOOK_ICON}${LINKEDIN_ICON}</span>
+    <h2>${escapeHtml(ACTION_COPY.socialTitle)}</h2>
+    <p>${escapeHtml(ACTION_COPY.socialBody)}</p>
+    <div class="social-actions">
+      <a class="button secondary" href="${escapeHtml(brand.facebook)}" target="_blank" rel="noopener noreferrer">Facebook</a>
+      <a class="button secondary" href="${escapeHtml(brand.linkedin)}" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+    </div>
+    <div class="social-follow">
+      ${followButton("facebook", summary.followedFacebook, "I followed on Facebook", "Followed on Facebook")}
+      ${followButton("linkedin", summary.followedLinkedin, "I followed on LinkedIn", "Followed on LinkedIn")}
+      <p class="follow-status" data-follow-status role="status"></p>
+    </div>
+  </article>`;
+}
+
+function pointsPanel(network, session, points) {
+  const summary = points || emptyPoints();
+  return `<section class="points-panel" id="hub-points" data-network="${escapeHtml(network)}" data-csrf="${escapeHtml(session?.csrf || "")}" data-installed="${summary.installed ? "1" : "0"}" aria-labelledby="points-heading">
+    <h2 id="points-heading">Your points: <span data-points-total>${escapeHtml(String(summary.total || 0))}</span></h2>
+    <p data-points-breakdown>${escapeHtml(pointsBreakdown(summary))}</p>
+    <p>${escapeHtml(POINTS_EARN)}</p>
+  </section>`;
 }
 
 function prioritySection(network) {
@@ -570,7 +604,7 @@ export function renderWelcome({ session, admin, network, also = [] }) {
   });
 }
 
-export function renderNetworkHub({ session, admin, network, top = [], resources = [], stories = [], posts, also = [], issues = [], flagged = false, profile = {} }) {
+export function renderNetworkHub({ session, admin, network, top = [], resources = [], stories = [], posts, also = [], issues = [], flagged = false, profile = {}, referralCode = "", points = null }) {
   const brand = networkById(network);
   const name = brand?.name || networkLabel(network);
   const source = Array.isArray(posts) ? posts : [...top, ...resources, ...stories];
@@ -602,9 +636,10 @@ export function renderNetworkHub({ session, admin, network, top = [], resources 
         <div class="action-grid">
           ${actionCard({ href: `/hub/${network}/flag`, title: ACTION_COPY.flagTitle, body: FLAG_PROMPT, icon: FLAG_ICON, primary: true })}
           ${brand ? actionButton({ title: ACTION_COPY.inviteTitle, body: ACTION_COPY.inviteBody, icon: INVITE_ICON, dialog: "invite-dialog" }) : ""}
-          ${brand ? actionCard({ href: brand.facebook, title: ACTION_COPY.facebookTitle, body: ACTION_COPY.facebookBody, icon: FACEBOOK_ICON, external: true }) : ""}
+          ${socialCard(network, points)}
           ${actionButton({ title: ACTION_COPY.appTitle, body: ACTION_COPY.appBody, icon: PHONE_ICON, dialog: "install-dialog", extraClass: "install-card" })}
         </div>
+        ${pointsPanel(network, session, points)}
       </div>
       <div class="member-main">
         <div class="container hub-layout">
@@ -621,7 +656,7 @@ export function renderNetworkHub({ session, admin, network, top = [], resources 
       </div>
       ${memberFooter(brand)}
       ${installDialog()}
-      ${brand ? inviteDialog(network) : ""}
+      ${brand ? inviteDialog(network, referralCode) : ""}
       <script>${HUB_HOME_SCRIPT}</script>
     </div>`,
   });
@@ -844,7 +879,7 @@ function networkChecks(applied, memberNetworks = []) {
   }).join("");
 }
 
-export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true, memberNetworks = [], logins = {} }) {
+export function renderApplicationDetail({ session, application, fields, notes = [], message, noteDraft = "", notesReady = true, memberNetworks = [], logins = {}, referrerName = "" }) {
   const applied = networkById(application.network);
   const actions = `<form method="post" action="/admin/applications/${escapeHtml(application.id)}/approve">
       <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
@@ -880,6 +915,7 @@ export function renderApplicationDetail({ session, application, fields, notes = 
         ${alsoLine}
         <p class="meta">Submitted ${escapeHtml(formatWhen(application.submitted_at))}</p>
         <p class="meta">${emailHtml}</p>
+        ${referrerName ? `<p class="meta">Referred by ${escapeHtml(referrerName)}</p>` : ""}
         ${loginLine(logins)}
         ${reviewed}
         <p class="meta">MailerLite: ${escapeHtml(application.mailerlite_detail || "Not sent yet")}</p>
@@ -915,16 +951,17 @@ export function renderMembers({ session, rows, sort = "name", message = "" }) {
         <td>${row.networks.map((network) => `<span class="pill">${escapeHtml(networkLabel(network))}</span>`).join(" ")}</td>
         <td><span class="col-label">Logins</span>${escapeHtml(String(Number(row.login_count) || 0))}</td>
         <td><span class="col-label">Last login</span>${escapeHtml(formatLoginWhen(row.last_login_at))}</td>
+        <td><span class="col-label">Points</span>${escapeHtml(String(Number(row.points) || 0))}</td>
       </tr>`).join("")
-    : `<tr><td colspan="4">No approved members yet.</td></tr>`;
+    : `<tr><td colspan="5">No approved members yet.</td></tr>`;
   return shell({
     title: "Members · Walton County Business Leaders",
     session,
     admin: true,
     body: `<p class="eyebrow">Admin</p><h1>Members</h1>
       ${notice(message)}
-      <p class="lede">Approved members and the networks on their account. Logins count each successful sign-in.</p>
-      <table class="hub-table"><thead><tr><th>${memberSortLink("Member", "name", sort)}</th><th>Networks</th><th>${memberSortLink("Logins", "logins", sort)}</th><th>${memberSortLink("Last login", "last", sort)}</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
+      <p class="lede">Approved members and the networks on their account. Logins count each successful sign-in. Points are that member's own total.</p>
+      <table class="hub-table"><thead><tr><th>${memberSortLink("Member", "name", sort)}</th><th>Networks</th><th>${memberSortLink("Logins", "logins", sort)}</th><th>${memberSortLink("Last login", "last", sort)}</th><th>Points</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
   });
 }
 
@@ -1024,7 +1061,7 @@ function profileEditor({ action, session, profile, fields }) {
   </form>`;
 }
 
-export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message, logins = {} }) {
+export function renderMemberDetail({ session, member, profile, fields, applications, notes, applicationNotes = [], message, logins = {}, points = null }) {
   const filled = [];
   const missing = [];
   for (const [key, label] of PROFILE_ROWS) {
@@ -1066,6 +1103,8 @@ export function renderMemberDetail({ session, member, profile, fields, applicati
         ${tags ? `<div class="member-tags">${tags}</div>` : ""}
       </div>
       ${loginLine(logins)}
+      <p class="meta">Points: ${escapeHtml(String((points || emptyPoints()).total || 0))}</p>
+      <p class="meta">${escapeHtml(pointsBreakdown(points || emptyPoints()))}</p>
       <div class="member-actions">
         <a class="button" href="/admin/members/${escapeHtml(member.id)}/edit">Edit profile</a>
         ${remove}

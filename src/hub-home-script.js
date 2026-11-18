@@ -13,8 +13,38 @@ export const HUB_HOME_SCRIPT = `(function () {
     var standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
     return window.navigator.standalone === true || standalone === true;
   }
+  var pointsRoot = document.getElementById("hub-points");
+  function postPoints(kind) {
+    if (!pointsRoot) return Promise.resolve(null);
+    var body = new URLSearchParams();
+    body.set("csrf", pointsRoot.getAttribute("data-csrf") || "");
+    body.set("kind", kind);
+    body.set("network", pointsRoot.getAttribute("data-network") || "");
+    return fetch("/api/hub/points", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      body: body.toString(),
+    }).then(function (response) {
+      return response.ok ? response.json() : null;
+    }).catch(function () { return null; });
+  }
+  function paintPoints(data) {
+    if (!data || !pointsRoot) return;
+    var total = pointsRoot.querySelector("[data-points-total]");
+    if (total && data.total != null) total.textContent = String(data.total);
+    var line = pointsRoot.querySelector("[data-points-breakdown]");
+    var breakdown = data.breakdown;
+    if (line && breakdown) {
+      line.textContent = "Welcome bonus " + (breakdown.welcome || 0) + ". Referrals " + (breakdown.referral || 0) + ". App install " + (breakdown.install || 0) + ". Facebook " + (breakdown.facebook || 0) + ". LinkedIn " + (breakdown.linkedin || 0) + ".";
+    }
+    if (data.awarded && data.breakdown && data.breakdown.install) pointsRoot.setAttribute("data-installed", "1");
+  }
   var installCard = document.querySelector(".install-card");
   if (installCard && installed()) installCard.hidden = true;
+  if (installed() && pointsRoot && pointsRoot.getAttribute("data-installed") !== "1") {
+    postPoints("install").then(paintPoints);
+  }
 
   var steps = document.querySelector(".install-steps-list");
   if (steps && platform() === "android") {
@@ -25,6 +55,23 @@ export const HUB_HOME_SCRIPT = `(function () {
   document.addEventListener("click", function (event) {
     var target = event.target;
     if (!target || !target.closest) return;
+    var follow = target.closest("[data-follow]");
+    if (follow) {
+      if (follow.disabled) return;
+      var kind = follow.getAttribute("data-follow") || "";
+      follow.disabled = true;
+      postPoints(kind).then(function (data) {
+        paintPoints(data);
+        var status = document.querySelector("[data-follow-status]");
+        if (data && (data.awarded || data.already)) {
+          follow.textContent = kind === "linkedin" ? "Followed on LinkedIn" : "Followed on Facebook";
+          if (status) status.textContent = data.awarded ? "2 points added." : "Already recorded.";
+        } else {
+          follow.disabled = false;
+        }
+      });
+      return;
+    }
     var opener = target.closest("[data-open-dialog]");
     if (opener) {
       var dialog = document.getElementById(opener.getAttribute("data-open-dialog"));

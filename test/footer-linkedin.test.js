@@ -84,7 +84,9 @@ test("each member hub footer uses the same LinkedIn icon link beside that networ
     assert.match(footer, new RegExp(`href="${NETWORKS[network].facebook.replace(/[.]/g, "\\.")}"`));
     assert.equal(footer.split(LINK).length - 1, 1, network);
     assert.match(html, /\.footer-socials \{ display: inline-flex; align-items: center; gap: 10px; flex: none; \}/);
-    const actions = html.slice(html.indexOf('class="action-grid"'), html.indexOf('class="member-main"'));
-    assert.equal(actions.includes(LINKEDIN), false, network);
+    const actions = html.slice(html.indexOf('class="action-grid"'), html.indexOf('class="points-panel"'));
+    assert.ok(actions.includes(NETWORKS[network].linkedin), network);
+    assert.match(actions, />Join us on social</);
+    if (network !== "business") assert.equal(actions.includes(LINKEDIN), false, network);
   }
 });

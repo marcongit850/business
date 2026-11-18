@@ -34,6 +34,7 @@ import {
   updateIssueStatus,
 } from "./issues.js";
 import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
+import { CLAIMABLE_POINTS, emptyPoints, normalizeReferralCode, POINT_VALUES, randomReferralCode, summarizePoints } from "./points.js";
 import { emptyProfile, fillProfileFromApplications, profileHasBlank } from "./profile-prefill.js";
 import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, safeReturnPath, signInDestination, verifyLinkPath } from "./text.js";
 import {
@@ -321,16 +322,19 @@ export async function recordBusinessApplication(env, record, ctx) {
     const id = crypto.randomUUID();
     const now = nowIso();
     const email = normalizeEmail(record.email);
-    await db.prepare(`INSERT INTO applications
-      (id, network, name, email, submitted_at, source_url, fields_json, status, created_at)
-      VALUES (?, 'business', ?, ?, ?, 'https://waltonleaders.org/join', ?, 'pending', ?)`).bind(
+    const referrer = await lookupReferrer(db, "business", record.ref);
+    await insertApplication(db, {
       id,
-      record.name,
+      network: "business",
+      name: record.name,
       email,
-      now,
-      JSON.stringify(record.fields),
-      now,
-    ).run();
+      submitted_at: now,
+      source_url: "https://waltonleaders.org/join",
+      fields: record.fields,
+      created_at: now,
+      referral_code: referrer.code,
+      referrer_member_id: referrer.memberId,
+    });
     scheduleApplicationThankYou(ctx, env, { network: "business", name: record.name, email });
     return { ok: true, id };
   } catch (error) {
@@ -347,7 +351,8 @@ export async function handleHub(request, env, ui, ctx) {
   const loginPost = request.method === "POST" && (path === "/login" || Boolean(loginNetwork));
   const loginGet = (request.method === "GET" || request.method === "HEAD") && loginPage;
   const navGet = path === "/api/hub/nav" && (request.method === "GET" || request.method === "HEAD");
-  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || loginPost || loginGet || navGet;
+  const pointsRoute = path === "/api/hub/points";
+  const hubPath = path === "/login/verify" || path === "/logout" || path.startsWith("/admin") || path.startsWith("/hub") || path === "/api/hub/applications" || pointsRoute || loginPost || loginGet || navGet;
   if (!hubPath) return null;
 
   const headersOf = (sample) => sample.headers;
@@ -369,6 +374,7 @@ export async function handleHub(request, env, ui, ctx) {
     const db = database(env);
     if (navGet) return await navState(request, db);
     if (path === "/api/hub/applications") return await ingest(request, env, db, json, ctx);
+    if (pointsRoute) return await claimPoints(request, db, json);
     if (!db) {
       if (loginGet) return null;
       if (loginPost) return redirect(loginPath({ notice: "unavailable", network: loginNetwork }));
@@ -406,11 +412,19 @@ async function ingest(request, env, db, json, ctx) {
   const id = crypto.randomUUID();
   const now = nowIso();
   const item = parsed.value;
-  await db.prepare(`INSERT INTO applications
-    (id, network, name, email, submitted_at, source_url, fields_json, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
-    id, item.network, item.name, item.email, item.submitted_at, item.source_url, JSON.stringify(item.fields), now,
-  ).run();
+  const referrer = await lookupReferrer(db, item.network, item.ref);
+  await insertApplication(db, {
+    id,
+    network: item.network,
+    name: item.name,
+    email: item.email,
+    submitted_at: item.submitted_at,
+    source_url: item.source_url,
+    fields: item.fields,
+    created_at: now,
+    referral_code: referrer.code,
+    referrer_member_id: referrer.memberId,
+  });
   scheduleApplicationThankYou(ctx, env, { network: item.network, name: item.name, email: item.email });
   return json({ ok: true, id }, 201);
 }
@@ -675,13 +689,212 @@ function missingTable(error) {
 
 function missingColumn(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /no such column/i.test(message);
+  return /no such column|no column named/i.test(message);
+}
+
+function uniqueConflict(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /UNIQUE constraint failed/i.test(message);
+}
+
+async function lookupReferrer(db, network, ref) {
+  const code = normalizeReferralCode(ref);
+  if (!code) return { code: "", memberId: "" };
+  try {
+    const row = await db.prepare("SELECT member_id, network, code FROM referral_codes WHERE code = ? COLLATE NOCASE").bind(code).first();
+    if (!row || row.network !== network) return { code: "", memberId: "" };
+    return { code: String(row.code || code).toLowerCase(), memberId: row.member_id || "" };
+  } catch (error) {
+    if (missingTable(error)) return { code: "", memberId: "" };
+    throw error;
+  }
+}
+
+async function insertApplication(db, item) {
+  const fieldsJson = JSON.stringify(item.fields || {});
+  const referralCode = item.referral_code || "";
+  const referrerId = item.referrer_member_id || "";
+  try {
+    await db.prepare(`INSERT INTO applications
+      (id, network, name, email, submitted_at, source_url, fields_json, status, created_at, referral_code, referrer_member_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(
+      item.id,
+      item.network,
+      item.name,
+      item.email,
+      item.submitted_at,
+      item.source_url,
+      fieldsJson,
+      item.created_at,
+      referralCode,
+      referrerId,
+    ).run();
+  } catch (error) {
+    if (!missingColumn(error)) throw error;
+    await db.prepare(`INSERT INTO applications
+      (id, network, name, email, submitted_at, source_url, fields_json, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
+      item.id,
+      item.network,
+      item.name,
+      item.email,
+      item.submitted_at,
+      item.source_url,
+      fieldsJson,
+      item.created_at,
+    ).run();
+  }
+}
+
+async function ensureReferralCode(db, memberId, network) {
+  if (!memberId || !networkId(network)) return "";
+  try {
+    const existing = await db.prepare("SELECT code FROM referral_codes WHERE member_id = ? AND network = ?").bind(memberId, network).first();
+    if (existing?.code) return existing.code;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = randomReferralCode();
+      try {
+        await db.prepare("INSERT INTO referral_codes (member_id, network, code, created_at) VALUES (?, ?, ?, ?)").bind(memberId, network, code, nowIso()).run();
+        return code;
+      } catch (error) {
+        if (!uniqueConflict(error)) throw error;
+        const winner = await db.prepare("SELECT code FROM referral_codes WHERE member_id = ? AND network = ?").bind(memberId, network).first();
+        if (winner?.code) return winner.code;
+      }
+    }
+    const finalCode = await db.prepare("SELECT code FROM referral_codes WHERE member_id = ? AND network = ?").bind(memberId, network).first();
+    return finalCode?.code || "";
+  } catch (error) {
+    if (missingTable(error)) return "";
+    throw error;
+  }
+}
+
+async function awardPoints(db, { memberId, kind, network = "", points, subject = "" }) {
+  if (!memberId || !points) return { awarded: false, ready: false };
+  try {
+    await db.prepare(`INSERT INTO points_events (id, member_id, kind, network, points, subject, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(crypto.randomUUID(), memberId, kind, network, points, subject, nowIso()).run();
+    return { awarded: true, already: false, ready: true };
+  } catch (error) {
+    if (uniqueConflict(error)) return { awarded: false, already: true, ready: true };
+    if (missingTable(error)) return { awarded: false, already: false, ready: false };
+    throw error;
+  }
+}
+
+async function awardWelcomePoints(db, memberId) {
+  return awardPoints(db, { memberId, kind: "welcome", network: "", points: POINT_VALUES.welcome, subject: "" });
+}
+
+async function awardReferralPoints(db, application, applicantMemberId) {
+  const referrerId = String(application?.referrer_member_id || "").trim();
+  const email = normalizeEmail(application?.email);
+  if (!referrerId || !email) return { awarded: false };
+  if (referrerId === applicantMemberId) return { awarded: false };
+  const referrer = await db.prepare("SELECT id, email FROM members WHERE id = ?").bind(referrerId).first();
+  if (!referrer) return { awarded: false };
+  if (normalizeEmail(referrer.email) === email) return { awarded: false };
+  return awardPoints(db, {
+    memberId: referrer.id,
+    kind: "referral",
+    network: "",
+    points: POINT_VALUES.referral,
+    subject: email,
+  });
+}
+
+async function pointsForMember(db, memberId, network) {
+  if (!memberId) return emptyPoints();
+  try {
+    const result = await db.prepare("SELECT kind, network, points FROM points_events WHERE member_id = ?").bind(memberId).all();
+    return summarizePoints(result.results || [], network);
+  } catch (error) {
+    if (missingTable(error)) return emptyPoints();
+    throw error;
+  }
+}
+
+async function pointsTotals(db) {
+  const totals = new Map();
+  try {
+    const result = await db.prepare("SELECT member_id, SUM(points) AS points_total FROM points_events GROUP BY member_id").bind().all();
+    for (const row of result.results || []) totals.set(row.member_id, Number(row.points_total) || 0);
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
+  return totals;
+}
+
+async function referrerLabel(db, memberId) {
+  const id = String(memberId || "").trim();
+  if (!id) return "";
+  const row = await db.prepare(`SELECT m.name, m.email, COALESCE(p.name, '') AS profile_name
+    FROM members m
+    LEFT JOIN member_profiles p ON p.member_id = m.id
+    WHERE m.id = ?`).bind(id).first();
+  if (!row) return "";
+  return String(row.profile_name || "").trim() || String(row.name || "").trim() || String(row.email || "");
+}
+
+async function claimPoints(request, db, json) {
+  if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
+  if (!db) return json({ ok: false, error: "Hub database is not configured" }, 503);
+  const session = await loadSession(db, request);
+  if (!session) return json({ ok: false, error: "Unauthorized" }, 401);
+  const contentType = request.headers.get("Content-Type") || "";
+  let kind = "";
+  let network = "";
+  let csrf = "";
+  if (contentType.toLowerCase().includes("application/json")) {
+    const body = await readLimitedJson(request);
+    if (body.error || !body.value || typeof body.value !== "object") return json({ ok: false, error: "Invalid input" }, 400);
+    kind = body.value.kind;
+    network = body.value.network;
+    csrf = body.value.csrf;
+  } else {
+    const form = await request.formData();
+    kind = form.get("kind");
+    network = form.get("network");
+    csrf = form.get("csrf");
+  }
+  if (!(await secretsEqual(String(csrf || ""), session.csrf || ""))) return json({ ok: false, error: "Forbidden" }, 403);
+  const id = networkId(network);
+  if (!CLAIMABLE_POINTS.includes(kind) || !id) return json({ ok: false, error: "Invalid input" }, 400);
+  const member = await db.prepare("SELECT id FROM members WHERE email = ?").bind(session.email).first();
+  if (!member) return json({ ok: false, error: "Forbidden" }, 403);
+  const memberships = await approvedNetworks(db, session.email);
+  if (!memberships.includes(id)) return json({ ok: false, error: "Forbidden" }, 403);
+  const eventNetwork = kind === "install" ? "" : id;
+  const result = await awardPoints(db, {
+    memberId: member.id,
+    kind,
+    network: eventNetwork,
+    points: POINT_VALUES[kind],
+    subject: "",
+  });
+  if (result.ready === false) return json({ ok: false, error: "Points are not ready" }, 503);
+  const summary = await pointsForMember(db, member.id, id);
+  return json({
+    ok: true,
+    awarded: Boolean(result.awarded),
+    already: Boolean(result.already),
+    total: summary.total,
+    breakdown: {
+      welcome: summary.welcome,
+      referral: summary.referral,
+      install: summary.install,
+      facebook: summary.facebook,
+      linkedin: summary.linkedin,
+    },
+  });
 }
 
 async function showApplication(db, session, application, message, noteDraft, status, page) {
   const loaded = await loadApplicationNotes(db, application.id);
   const memberNetworks = await approvedMemberships(db, normalizeEmail(application.email));
   const logins = await loginStatsForEmail(db, application.email);
+  const referrerName = await referrerLabel(db, application.referrer_member_id);
   return page(renderApplicationDetail({
     session,
     application,
@@ -692,6 +905,7 @@ async function showApplication(db, session, application, message, noteDraft, sta
     notesReady: loaded.ready,
     memberNetworks,
     logins,
+    referrerName,
   }), status);
 }
 
@@ -832,6 +1046,8 @@ async function approveApplication(env, db, application, reviewer, form) {
     }
   }
   await carryApplicationNotes(db, application, memberId);
+  await awardWelcomePoints(db, memberId);
+  if (firstApproval) await awardReferralPoints(db, application, memberId);
 }
 
 async function denyApplication(db, application, reviewer) {
@@ -937,9 +1153,11 @@ async function listMembers(db, session, page, url) {
     if (!missingTable(error)) throw error;
     rows = await loadMemberRows(db, false);
   }
+  const totals = await pointsTotals(db);
+  const withPoints = sortMemberRows(rows, sort).map((row) => ({ ...row, points: totals.get(row.id) || 0 }));
   return page(renderMembers({
     session,
-    rows: sortMemberRows(rows, sort),
+    rows: withPoints,
     sort,
     message: url ? removedMemberMessage(url) : "",
   }));
@@ -1011,7 +1229,8 @@ async function memberRoute(request, env, db, session, id, action, url, page, red
     const notes = String(form.get("notes") || "").replace(/\r\n/g, "\n").trim();
     if (notes.length > NOTE_LIMIT) {
       const logins = await loginStatsForEmail(db, member.member.email);
-      return page(renderMemberDetail({ ...member, session, message: "Notes are too long.", notes, logins }), 400);
+      const points = await pointsForMember(db, member.member.id, "");
+      return page(renderMemberDetail({ ...member, session, message: "Notes are too long.", notes, logins, points }), 400);
     }
     await db.prepare(`INSERT INTO member_admin_notes (member_id, body, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(member_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`).bind(id, notes, nowIso()).run();
@@ -1024,9 +1243,11 @@ async function memberRoute(request, env, db, session, id, action, url, page, red
   const saved = url.searchParams.get("saved");
   const message = saved === "1" ? "Notes saved." : saved === "profile" ? "Profile saved." : "";
   const logins = await loginStatsForEmail(db, member.member.email);
+  const points = await pointsForMember(db, member.member.id, "");
   return page(renderMemberDetail({
     session,
     ...member,
+    points,
     notes: noteRow?.body || "",
     message,
     logins,
@@ -1139,6 +1360,12 @@ async function removeMemberAccount(env, db, session, loaded) {
   await db.prepare("DELETE FROM memberships WHERE member_id = ?").bind(member.id).run();
   await db.prepare("DELETE FROM sessions WHERE email = ?").bind(email).run();
   await db.prepare("DELETE FROM magic_links WHERE email = ?").bind(email).run();
+  try {
+    await db.prepare("DELETE FROM points_events WHERE member_id = ?").bind(member.id).run();
+    await db.prepare("DELETE FROM referral_codes WHERE member_id = ?").bind(member.id).run();
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
   await db.prepare("DELETE FROM members WHERE id = ?").bind(member.id).run();
   const media = env?.HUB_MEDIA;
   if (keys.length && media && typeof media.delete === "function") {
@@ -1503,6 +1730,8 @@ async function networkHome(db, session, admin, network, page, also, flagged) {
   const member = await db.prepare("SELECT id, name FROM members WHERE email = ?").bind(session.email).first();
   let issues = [];
   let profile = { name: "", company: "", role_title: "" };
+  let referralCode = "";
+  let points = emptyPoints();
   if (member) {
     profile = { name: member.name || "", company: "", role_title: "" };
     const row = await db.prepare("SELECT name, company, role_title FROM member_profiles WHERE member_id = ?").bind(member.id).first();
@@ -1518,6 +1747,8 @@ async function networkHome(db, session, admin, network, page, also, flagged) {
     } catch (error) {
       if (!missingTable(error)) throw error;
     }
+    referralCode = await ensureReferralCode(db, member.id, network);
+    points = await pointsForMember(db, member.id, network);
   }
   return page(renderNetworkHub({
     session,
@@ -1528,6 +1759,8 @@ async function networkHome(db, session, admin, network, page, also, flagged) {
     issues,
     posts,
     profile,
+    referralCode,
+    points,
   }));
 }
 
