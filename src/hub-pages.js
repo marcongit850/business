@@ -157,6 +157,32 @@ a.flag-button, button.flag-button {
   .site-header .header-inner { flex-direction: column; align-items: flex-start; }
   .hub-nav { width: 100%; margin-left: 0; padding-top: 4px; }
 }
+.row-select {
+  display: inline-flex; align-items: center; gap: 10px; min-width: 44px; min-height: 44px; cursor: pointer;
+}
+.row-select input { width: 22px; height: 22px; margin: 0; flex: none; }
+.clip-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.select-col { width: 52px; }
+.bulk-bar {
+  position: sticky; bottom: 0; z-index: 5; margin-top: 12px;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  background: #f6f3ec; border-top: 1px solid var(--line);
+}
+.bulk-bar .button { min-height: 44px; padding: 12px 18px; }
+.bulk-bar .button:disabled { opacity: 0.55; }
+@media (max-width: 800px) {
+  .bulk-apply thead { display: block; width: 100%; }
+  .bulk-apply thead tr { display: flex; align-items: center; padding: 0; }
+  .bulk-apply thead th { display: none; padding: 0; border: 0; }
+  .bulk-apply thead th.select-col { display: block; }
+  .bulk-apply .select-all-label {
+    position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto;
+    white-space: normal; font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  }
+}
 `;
 
 function alsoLine(also) {
@@ -865,21 +891,79 @@ function networkMembershipCell(row) {
   return `${primary}<div class="meta">Also added: ${escapeHtml(extras.join(", "))}</div>`;
 }
 
-export function renderApplications({ session, network, status, rows, mailerNote }) {
+function applicationSelectCell(row) {
+  if (row.status !== "pending") return `<td class="select-cell"></td>`;
+  return `<td class="select-cell"><label class="row-select"><input type="checkbox" name="ids" value="${escapeHtml(row.id)}"><span class="clip-label">Select ${escapeHtml(row.name || "application")}</span></label></td>`;
+}
+
+function bulkApproveScript() {
+  return `<script>
+(function () {
+  var form = document.getElementById("bulk-approve");
+  if (!form) return;
+  var all = form.querySelector("[data-select-pending]");
+  var button = form.querySelector("[data-approve-selected]");
+  function pendingBoxes() {
+    return Array.prototype.filter.call(form.querySelectorAll('input[name="ids"]'), function (box) {
+      return box.type === "checkbox";
+    });
+  }
+  function refresh() {
+    var items = pendingBoxes();
+    var checked = items.filter(function (box) { return box.checked; }).length;
+    if (button) {
+      button.disabled = checked === 0;
+      button.textContent = checked ? "Approve selected (" + checked + ")" : "Approve selected";
+    }
+    if (all && !all.disabled) {
+      all.checked = items.length > 0 && checked === items.length;
+      all.indeterminate = checked > 0 && checked < items.length;
+    }
+  }
+  if (all) {
+    all.addEventListener("change", function () {
+      var on = all.checked;
+      pendingBoxes().forEach(function (box) { box.checked = on; });
+      refresh();
+    });
+  }
+  form.addEventListener("change", function (event) {
+    var target = event.target;
+    if (target && target.name === "ids") refresh();
+  });
+  form.addEventListener("submit", function (event) {
+    var count = pendingBoxes().filter(function (box) { return box.checked; }).length;
+    if (!count) {
+      event.preventDefault();
+      return;
+    }
+    var noun = count === 1 ? "application" : "applications";
+    if (!window.confirm("Approve " + count + " " + noun + "?")) event.preventDefault();
+  });
+  refresh();
+})();
+</script>`;
+}
+
+export function renderApplications({ session, network, status, rows, mailerNote, message = "" }) {
   const option = (value, current, label) => `<option value="${value}"${value === current ? " selected" : ""}>${label}</option>`;
+  const pending = rows.some((row) => row.status === "pending");
   const bodyRows = rows.length
     ? rows.map((row) => `<tr>
+        ${applicationSelectCell(row)}
         <td data-label="Name"><a class="text-link" href="/admin/applications/${escapeHtml(row.id)}">${escapeHtml(row.name)}</a><div class="meta">${escapeHtml(row.email)}</div></td>
         <td>${networkMembershipCell(row)}</td>
         <td>${escapeHtml(formatWhen(row.submitted_at))}</td>
         <td><span class="pill">${escapeHtml(row.status)}</span></td>
       </tr>`).join("")
-    : `<tr><td colspan="4">No applications match these filters.</td></tr>`;
+    : `<tr><td colspan="5">No applications match these filters.</td></tr>`;
+  const selectAll = `<label class="row-select"><input type="checkbox" data-select-pending${pending ? "" : " disabled"}><span class="select-all-label clip-label">Select all pending</span></label>`;
   return shell({
     title: "Applications · Walton County Business Leaders",
     session,
     admin: true,
     body: `<p class="eyebrow">Admin</p><h1>Applications</h1>
+      ${notice(message)}
       ${notice(mailerNote)}
       <p class="lede">Join and application forms from Business Leaders, Builders, and Tourism.</p>
       <form class="filters" method="get" action="/admin">
@@ -897,7 +981,14 @@ export function renderApplications({ session, network, status, rows, mailerNote 
         </select></label>
         <button class="button" type="submit">Filter</button>
       </form>
-      <table class="hub-table"><thead><tr><th>Person</th><th>Network</th><th>Submitted</th><th>Status</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
+      <form id="bulk-approve" method="post" action="/admin/applications/bulk-approve">
+        <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+        <input type="hidden" name="network" value="${escapeHtml(network || "")}">
+        <input type="hidden" name="status" value="${escapeHtml(status || "")}">
+        <table class="hub-table bulk-apply"><thead><tr><th class="select-col">${selectAll}</th><th>Person</th><th>Network</th><th>Submitted</th><th>Status</th></tr></thead><tbody>${bodyRows}</tbody></table>
+        <div class="bulk-bar"><button class="button" type="submit" data-approve-selected disabled>Approve selected</button></div>
+      </form>
+      ${bulkApproveScript()}`,
   });
 }
 
