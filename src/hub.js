@@ -580,6 +580,7 @@ async function adminRoutes(request, env, db, url, page, redirect) {
   if (!admin) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: false }), 404);
   const path = url.pathname;
   if (path === "/admin" && (request.method === "GET" || request.method === "HEAD")) return listApplications(env, db, url, session, page);
+  if (path === "/admin/applications/bulk-approve") return bulkApproveApplications(request, env, db, session, page, redirect);
   const applicationMatch = path.match(/^\/admin\/applications\/([0-9a-f-]{36})(\/approve|\/deny|\/notes)?$/);
   if (applicationMatch) return applicationRoute(request, env, db, session, applicationMatch[1], applicationMatch[2] || "", page, redirect);
   if (path === "/admin/issues" && (request.method === "GET" || request.method === "HEAD")) return listFlagPage(db, session, page);
@@ -621,7 +622,8 @@ async function listApplications(env, db, url, session, page) {
   }));
   const notes = [];
   if (!String(env.MAILERLITE_API_KEY || "").trim()) notes.push("MailerLite not configured.");
-  return page(renderApplications({ session, network, status, rows, mailerNote: notes.join(" ") }));
+  const message = String(url.searchParams.get("notice") || "").trim().slice(0, 2000);
+  return page(renderApplications({ session, network, status, rows, mailerNote: notes.join(" "), message }));
 }
 
 async function listIdeasPage(db, session, url, page) {
@@ -1010,10 +1012,93 @@ async function carryApplicationNotes(db, application, memberId) {
   }
 }
 
+const APPLICATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function selectedApplicationIds(form) {
+  const ids = [];
+  const seen = new Set();
+  for (const value of form.getAll("ids")) {
+    const id = String(value || "").trim();
+    const key = id.toLowerCase();
+    if (!APPLICATION_ID.test(key) || seen.has(key)) continue;
+    seen.add(key);
+    ids.push(id);
+    if (ids.length >= 200) break;
+  }
+  return ids;
+}
+
+function applicantLabel(application) {
+  const name = String(application?.name || "").replace(/[\r\n]+/g, " ").trim();
+  if (name) return name;
+  const email = String(application?.email || "").replace(/[\r\n]+/g, " ").trim();
+  return email || "Unknown applicant";
+}
+
+function bulkApproveNotice({ approved, skipped, failed }) {
+  const parts = [`Approved ${approved}.`];
+  if (skipped) parts.push(`${skipped} skipped (already handled).`);
+  if (failed.length) parts.push(`Failed: ${failed.join(", ")}.`);
+  return parts.join(" ");
+}
+
+function applicationsReturn({ network = "", status = "", notice = "" } = {}) {
+  const params = new URLSearchParams();
+  if (network) params.set("network", network);
+  if (status) params.set("status", status);
+  if (notice) params.set("notice", notice);
+  const query = params.toString();
+  return query ? `/admin?${query}` : "/admin";
+}
+
+function postedFilter(form, name, allowed) {
+  const value = String(form.get(name) || "");
+  return allowed.includes(value) ? value : "";
+}
+
+async function bulkApproveApplications(request, env, db, session, page, redirect) {
+  if (request.method !== "POST") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
+  const form = await request.formData();
+  if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+  const network = postedFilter(form, "network", ["business", "builders", "tourism"]);
+  const status = postedFilter(form, "status", ["pending", "approved", "denied"]);
+  const ids = selectedApplicationIds(form);
+  if (!ids.length) return redirect(applicationsReturn({ network, status, notice: "Select at least one application." }));
+  let approved = 0;
+  let skipped = 0;
+  const failed = [];
+  for (const id of ids) {
+    const application = await db.prepare("SELECT * FROM applications WHERE id = ?").bind(id).first();
+    if (!application || application.status !== "pending") {
+      skipped += 1;
+      continue;
+    }
+    try {
+      await approvePendingApplication(env, db, application, session.email);
+      approved += 1;
+    } catch (error) {
+      logError("bulk approve failed", error);
+      failed.push(applicantLabel(application));
+    }
+  }
+  return redirect(applicationsReturn({ network, status, notice: bulkApproveNotice({ approved, skipped, failed }) }));
+}
+
 async function approveApplication(env, db, application, reviewer, form) {
+  const networks = approvalNetworks(application.network, form ? form.getAll("networks") : []);
+  await applyApplicationApproval(env, db, application, reviewer, networks);
+}
+
+// Same result as Approve on the application page with its boxes left as shown.
+async function approvePendingApplication(env, db, application, reviewer) {
+  const before = await approvedMemberships(db, normalizeEmail(application.email));
+  const networks = approvalNetworks(application.network, [application.network, ...before]);
+  await applyApplicationApproval(env, db, application, reviewer, networks);
+}
+
+async function applyApplicationApproval(env, db, application, reviewer, networks) {
   const now = nowIso();
   const email = normalizeEmail(application.email);
-  const networks = approvalNetworks(application.network, form ? form.getAll("networks") : []);
   const summary = approvalSummary(networks);
   const before = await approvedMemberships(db, email);
   const added = networks.filter((network) => !before.includes(network));
