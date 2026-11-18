@@ -66,6 +66,7 @@ test("each hub shows only that network's welcome, with the join and Facebook lin
     assert.match(html, /a\.flag-button[\s\S]*background: var\(--accent/);
     assert.match(html, /@media \(max-width: 800px\)[\s\S]*\.welcome \{ padding: 16px 14px 2px; \}/);
   }
+  assert.equal(FLAG_PROMPT, "Something happening in Walton County that the network should weigh in on? Let us know.");
   assert.equal(FLAG_THANKS, "Thanks, we'll look into it.");
   assert.equal(NETWORKS.business.join, "https://waltonleaders.org/join");
   assert.equal(NETWORKS.builders.join, "https://waltonbuildersnetwork.org/join");
