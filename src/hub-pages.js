@@ -187,6 +187,7 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
   const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/ideas">Ideas</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
+  const networkAdminLink = admin ? `<a class="admin-link" href="/admin">Admin</a>` : "";
   const logout = session
     ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="button secondary" type="submit">Log out</button></form>`
     : "";
@@ -203,7 +204,7 @@ function shell({ title, body, session, admin, network, also, header, mainClass =
       ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="sign-out" type="submit">Sign out</button></form>`
       : "";
     links = session
-      ? `<a class="hub-label" href="/hub/${brand.id}">Member Hub</a><a class="header-link" href="/hub/${brand.id}/profile">Profile</a>${adminLinks}${signOut}`
+      ? `<a class="hub-label" href="/hub/${brand.id}">Member Hub</a><a class="header-link" href="/hub/${brand.id}/profile">Profile</a>${networkAdminLink}${signOut}`
       : "";
   } else if (mode === "admin") {
     brandHtml = `<a class="brand" href="/" aria-label="Walton County Business Leaders home">

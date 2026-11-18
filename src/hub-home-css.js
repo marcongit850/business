@@ -12,6 +12,30 @@ export const HUB_HOME_CSS = `
   text-underline-offset: 4px;
   opacity: 1;
 }
+.hub-nav a.admin-link {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  opacity: 1;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--navy);
+  background: transparent;
+}
 .hub-nav a, .hub-nav button.sign-out {
   background: transparent;
   border: 0;
@@ -100,6 +124,15 @@ export const HUB_HOME_CSS = `
   min-height: 100%;
   color: var(--navy);
 }
+.action-grid > .action-card,
+.action-grid > button.action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-content: start;
+  justify-content: flex-start;
+  height: 100%;
+}
 .action-card.primary {
   background: var(--gold);
   border-color: var(--gold);
@@ -118,6 +151,11 @@ export const HUB_HOME_CSS = `
 }
 .action-card:not(.primary) .action-icon { border-color: rgba(208, 160, 64, 0.55); }
 button.action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-content: start;
+  justify-content: flex-start;
   width: 100%;
   margin: 0;
   font: inherit;
@@ -443,6 +481,15 @@ dialog.contact-dialog { position: fixed; }
 @media (max-width: 800px) {
   .site-header .header-inner { flex-direction: row; align-items: center; flex-wrap: nowrap; height: auto; min-height: 64px; padding: 10px 0; }
   .hub-nav { width: auto; margin-left: auto; padding-top: 0; }
+  body[data-network] .site-header .header-inner { gap: 8px; min-width: 0; max-width: 100%; }
+  body[data-network] .site-header .brand { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  body[data-network] .site-header .brand img { flex: none; }
+  body[data-network] .site-header .brand-name,
+  body[data-network] .site-header .brand-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body[data-network] .hub-nav { flex: none; flex-wrap: nowrap; gap: 8px; max-width: 100%; }
+  body[data-network] .hub-nav a.hub-label,
+  body[data-network] .hub-nav a.admin-link,
+  body[data-network] .hub-nav button.sign-out { white-space: nowrap; flex: none; }
   .hub-hero-inner { display: block; position: relative; padding: 36px 0 72px; }
   .hub-hero-seal { position: absolute; right: 0; top: 30px; width: 108px; height: 108px; }
   .hub-hero h1 { padding-right: 118px; }
@@ -451,10 +498,21 @@ dialog.contact-dialog { position: fixed; }
   }
   .hub-nav { gap: 12px; }
 }
+@media (max-width: 479px) {
+  body[data-network] .site-header .header-inner { flex-wrap: wrap; row-gap: 6px; }
+  body[data-network] .site-header .brand { overflow: visible; }
+  body[data-network] .site-header .brand-name,
+  body[data-network] .site-header .brand-name span { overflow: visible; text-overflow: clip; }
+  body[data-network] .hub-nav { flex: 1 0 100%; margin-left: 0; justify-content: flex-start; }
+}
 @media (max-width: 380px) {
   .hub-hero h1 { font-size: 36px; }
   .hub-nav a.hub-label { font-size: 11px; }
   .hub-nav a, .hub-nav button.sign-out { font-size: 12px; }
+  body[data-network] .site-header .header-inner { gap: 6px; }
+  body[data-network] .hub-nav { gap: 6px; }
+  body[data-network] .hub-nav a.admin-link { padding: 2px 6px; font-size: 10px; letter-spacing: 0.04em; }
+  body[data-network] .hub-nav a.hub-label { letter-spacing: 0.02em; }
 }
 @media (display-mode: standalone) {
   .install-card { display: none; }

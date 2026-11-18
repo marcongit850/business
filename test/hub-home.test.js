@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { HUB_PRIORITIES, postPlainText, postsForHub, welcomeHeading } from "../src/hub-copy.js";
 import { hubHero } from "../src/hub-hero.js";
-import { renderContentEditor, renderMemberItem, renderNetworkHub } from "../src/hub-pages.js";
+import { renderApplications, renderContentEditor, renderMemberItem, renderNetworkHub, renderProfile } from "../src/hub-pages.js";
 import { renderMarkdown } from "../src/text.js";
 import { validateContent } from "../src/validate.js";
 
@@ -126,7 +126,8 @@ test("Latest shows published posts for this network and all-network posts, newes
   assert.match(html, /Also a member of <a href="\/hub\/tourism">Walton County Tourism Network<\/a>\./);
   const nav = html.slice(html.indexOf("<nav"), html.indexOf("</nav>"));
   assert.equal(nav.includes("Tourism"), false);
-  assert.match(nav, /href="\/admin\/content"/);
+  assert.match(nav, /class="admin-link" href="\/admin">Admin</);
+  assert.equal(nav.includes("/admin/content"), false);
 
   const full = renderMemberItem({ session, admin: false, network: "business", item: posts[5] });
   assert.match(full, /<h3>Next steps<\/h3>/);
@@ -209,6 +210,103 @@ test("the content editor can target every network and keeps raw html as text", (
   const migration = readFileSync(new URL("../migrations/0004_content_share_all.sql", import.meta.url), "utf8");
   assert.match(migration, /ADD COLUMN share_all/);
   assert.equal(/[—–]/.test(migration), false);
+});
+
+function accountNav(html) {
+  return html.slice(html.indexOf("<nav"), html.indexOf("</nav>"));
+}
+
+test("an admin sees one Admin link on a network hub and a member sees none", () => {
+  for (const network of ["business", "builders", "tourism"]) {
+    const adminHtml = renderNetworkHub({
+      session,
+      admin: true,
+      network,
+      profile: { name: "Marc Douglass" },
+      posts: [],
+      issues: [],
+    });
+    const nav = accountNav(adminHtml);
+    const adminHrefs = [...nav.matchAll(/href="([^"]*)"/g)].map((match) => match[1]).filter((href) => href === "/admin" || href.startsWith("/admin/"));
+    assert.deepEqual(adminHrefs, ["/admin"], network);
+    assert.match(nav, /<a class="admin-link" href="\/admin">Admin<\/a>/, network);
+    assert.equal((nav.match(/class="admin-link"/g) || []).length, 1, network);
+    assert.equal(nav.includes("Applications"), false, network);
+    assert.equal(nav.includes("Flagged issues"), false, network);
+    assert.equal(nav.includes(">Members<"), false, network);
+    assert.equal(nav.includes(">Content<"), false, network);
+    assert.equal(nav.includes("Ideas"), false, network);
+    assert.match(nav, new RegExp(`class="hub-label" href="/hub/${network}">Member Hub</a>`), network);
+    assert.match(nav, /class="header-link"/, network);
+    assert.equal(nav.includes('class="header-link" href="/admin"'), false, network);
+    assert.equal(/[—–]/.test(nav), false, network);
+
+    const hidden = adminHtml.match(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/);
+    assert.ok(hidden, network);
+    assert.match(hidden[1], /\.hub-nav a\.header-link/);
+    assert.equal(hidden[1].includes("admin-link"), false, network);
+    assert.match(adminHtml, /\.hub-nav a\.admin-link \{[\s\S]*border: 1px solid var\(--gold\);/);
+    assert.match(adminHtml, /body\[data-network\] \.site-header \.brand \{ flex: 1 1 auto; min-width: 0; overflow: hidden; \}/);
+    assert.match(adminHtml, /@media \(max-width: 479px\) \{\s*body\[data-network\] \.site-header \.header-inner \{ flex-wrap: wrap; row-gap: 6px; \}/);
+
+    const memberHtml = renderNetworkHub({
+      session,
+      admin: false,
+      network,
+      profile: { name: "Ada Example" },
+      posts: [],
+      issues: [],
+    });
+    const memberNav = accountNav(memberHtml);
+    assert.equal(memberNav.includes("/admin"), false, network);
+    assert.equal(memberNav.includes(">Admin<"), false, network);
+    assert.equal(memberNav.includes("admin-link"), false, network);
+    assert.match(memberNav, /Member Hub/, network);
+
+    const profile = renderProfile({
+      session,
+      admin: true,
+      profile: {},
+      fields: [],
+      network,
+    });
+    const profileNav = accountNav(profile);
+    assert.deepEqual(
+      [...profileNav.matchAll(/href="([^"]*)"/g)].map((match) => match[1]).filter((href) => href.startsWith("/admin")),
+      ["/admin"],
+      network,
+    );
+  }
+
+  const adminPage = renderApplications({ session, network: "", status: "", rows: [] });
+  const adminNav = accountNav(adminPage);
+  assert.match(adminNav, /<a href="\/hub">Hub<\/a>/);
+  assert.match(adminNav, /<a href="\/hub\/profile">Profile<\/a>/);
+  assert.match(adminNav, /<a href="\/admin">Applications<\/a>/);
+  assert.match(adminNav, /<a href="\/admin\/issues">Flagged issues<\/a>/);
+  assert.match(adminNav, /<a href="\/admin\/ideas">Ideas<\/a>/);
+  assert.match(adminNav, /<a href="\/admin\/members">Members<\/a>/);
+  assert.ok(adminNav.indexOf('href="/admin/issues"') < adminNav.indexOf('href="/admin/ideas">Ideas') && adminNav.indexOf('href="/admin/ideas">Ideas') < adminNav.indexOf('href="/admin/members"'));
+  assert.match(adminNav, /<a href="\/admin\/content">Content<\/a>/);
+  assert.equal(adminNav.includes("admin-link"), false);
+  assert.equal(adminNav.includes(">Admin<"), false);
+  assert.equal(/[—–]/.test(adminNav), false);
+});
+
+test("action cards in the hub grid align to the top and keep equal height", () => {
+  const html = renderNetworkHub({
+    session,
+    network: "business",
+    profile: { name: "Marc" },
+  });
+  assert.match(html, /\.action-grid > \.action-card,\s*\.action-grid > button\.action-card \{\s*display: flex;\s*flex-direction: column;\s*align-items: stretch;\s*align-content: start;\s*justify-content: flex-start;\s*height: 100%;\s*\}/);
+  assert.match(html, /button\.action-card \{\s*display: flex;\s*flex-direction: column;\s*align-items: stretch;\s*align-content: start;\s*justify-content: flex-start;/);
+  const cardRule = html.slice(html.indexOf(".action-grid > .action-card"), html.indexOf(".action-card.primary"));
+  assert.equal(cardRule.includes("justify-content: center"), false);
+  assert.equal(cardRule.includes("align-items: center"), false);
+  const grid = html.slice(html.indexOf('class="action-grid"'), html.indexOf('class="action-card idea-card"'));
+  assert.equal((grid.match(/class="action-card/g) || []).length, 4);
+  assert.match(html, /class="action-card idea-card"/);
 });
 
 test("the hero photo is the file in this repo", () => {
