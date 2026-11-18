@@ -1270,6 +1270,7 @@ function sortMemberRows(rows, sort) {
 async function listMembers(db, session, page, url) {
   const requested = String(url?.searchParams?.get("sort") || "");
   const sort = requested === "logins" || requested === "last" ? requested : "name";
+  const network = networkId(url?.searchParams?.get("network"));
   let rows;
   try {
     rows = await loadMemberRows(db, true);
@@ -1277,12 +1278,14 @@ async function listMembers(db, session, page, url) {
     if (!missingTable(error)) throw error;
     rows = await loadMemberRows(db, false);
   }
+  const shown = network ? rows.filter((row) => row.networks.includes(network)) : rows;
   const totals = await pointsTotals(db);
-  const withPoints = sortMemberRows(rows, sort).map((row) => ({ ...row, points: totals.get(row.id) || 0 }));
+  const withPoints = sortMemberRows(shown, sort).map((row) => ({ ...row, points: totals.get(row.id) || 0 }));
   return page(renderMembers({
     session,
     rows: withPoints,
     sort,
+    network,
     message: url ? removedMemberMessage(url) : "",
   }));
 }

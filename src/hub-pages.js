@@ -1066,22 +1066,36 @@ export function renderApplicationDetail({ session, application, fields, notes = 
   });
 }
 
-function memberSortLink(label, sort, current) {
-  const href = sort === "name" ? "/admin/members" : `/admin/members?sort=${sort}`;
-  const currentAttr = sort === current ? ` aria-current="true"` : "";
-  return `<a class="text-link" href="${href}"${currentAttr}>${escapeHtml(label)}</a>`;
+function memberListHref(network, sort) {
+  const params = new URLSearchParams();
+  if (network) params.set("network", network);
+  if (sort && sort !== "name") params.set("sort", sort);
+  const query = params.toString();
+  return query ? `/admin/members?${query}` : "/admin/members";
 }
 
-export function renderMembers({ session, rows, sort = "name", message = "" }) {
+function memberSortLink(label, sort, current, network) {
+  const href = memberListHref(network, sort);
+  const currentAttr = sort === current ? ` aria-current="true"` : "";
+  return `<a class="text-link" href="${escapeHtml(href)}"${currentAttr}>${escapeHtml(label)}</a>`;
+}
+
+function memberCountLabel(count) {
+  return count === 1 ? "1 member" : `${count} members`;
+}
+
+export function renderMembers({ session, rows, sort = "name", network = "", message = "" }) {
+  const option = (value, current, label) => `<option value="${value}"${value === current ? " selected" : ""}>${label}</option>`;
   const bodyRows = rows.length
     ? rows.map((row) => `<tr>
         <td><a class="text-link" href="/admin/members/${escapeHtml(row.id)}">${escapeHtml(row.display_name)}</a><div class="meta">${escapeHtml(row.email)}</div></td>
-        <td>${row.networks.map((network) => `<span class="pill">${escapeHtml(networkLabel(network))}</span>`).join(" ")}</td>
+        <td>${row.networks.map((item) => `<span class="pill">${escapeHtml(networkLabel(item))}</span>`).join(" ")}</td>
         <td><span class="col-label">Logins</span>${escapeHtml(String(Number(row.login_count) || 0))}</td>
         <td><span class="col-label">Last login</span>${escapeHtml(formatLoginWhen(row.last_login_at))}</td>
         <td><span class="col-label">Points</span>${escapeHtml(String(Number(row.points) || 0))}</td>
       </tr>`).join("")
-    : `<tr><td colspan="5">No approved members yet.</td></tr>`;
+    : `<tr><td colspan="5">${network ? "No approved members in this network." : "No approved members yet."}</td></tr>`;
+  const sortField = sort === "name" ? "" : `<input type="hidden" name="sort" value="${escapeHtml(sort)}">`;
   return shell({
     title: "Members · Walton County Business Leaders",
     session,
@@ -1089,7 +1103,18 @@ export function renderMembers({ session, rows, sort = "name", message = "" }) {
     body: `<p class="eyebrow">Admin</p><h1>Members</h1>
       ${notice(message)}
       <p class="lede">Approved members and the networks on their account. Logins count each successful sign-in. Points are that member's own total.</p>
-      <table class="hub-table"><thead><tr><th>${memberSortLink("Member", "name", sort)}</th><th>Networks</th><th>${memberSortLink("Logins", "logins", sort)}</th><th>${memberSortLink("Last login", "last", sort)}</th><th>Points</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
+      <form class="filters" method="get" action="/admin/members">
+        <label>Network<select name="network">
+          ${option("", network, "All networks")}
+          ${option("business", network, "Business Leaders")}
+          ${option("builders", network, "Builders")}
+          ${option("tourism", network, "Tourism")}
+        </select></label>
+        ${sortField}
+        <button class="button" type="submit">Filter</button>
+      </form>
+      <p class="meta">${escapeHtml(memberCountLabel(rows.length))}</p>
+      <table class="hub-table"><thead><tr><th>${memberSortLink("Member", "name", sort, network)}</th><th>Networks</th><th>${memberSortLink("Logins", "logins", sort, network)}</th><th>${memberSortLink("Last login", "last", sort, network)}</th><th>Points</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
   });
 }
 
