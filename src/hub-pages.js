@@ -1,8 +1,9 @@
-import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, clipText, postPlainText, postsForHub, welcomeExcerpt, welcomeHeading } from "./hub-copy.js";
+import { ACTION_COPY, HERO_LINE, HERO_PHOTO, HUB_PRIORITIES, IDEA_COPY, clipText, postPlainText, postsForHub, welcomeExcerpt, welcomeHeading } from "./hub-copy.js";
 import { HUB_HOME_CSS } from "./hub-home-css.js";
 import { HUB_HOME_SCRIPT } from "./hub-home-script.js";
 import { emailHref, facebookHref, inviteShare, linkedinHref, smsHref, xHref } from "./hub-share.js";
 import { actionEarnText, emptyPoints, POINT_VALUES, POINTS_EARN, pointsBreakdown } from "./points.js";
+import { IDEA_BODY_LIMIT, ideaStatusLabel } from "./ideas.js";
 import { ISSUE_STATUSES, issueStatusLabel } from "./issues.js";
 import { NETWORK_IDS, networkById, networkList } from "./networks.js";
 import { PWA_SHORT_NAMES, pwaAppleTouchPath, pwaManifestPath } from "./pwa.js";
@@ -134,7 +135,7 @@ a.flag-button, button.flag-button {
   background: #fff; border: 1px solid var(--line); padding: 12px 14px; margin: 0 0 10px;
 }
 .my-issue-title { font-weight: 700; overflow-wrap: anywhere; }
-.issue-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.issue-body, .idea-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 @media (max-width: 800px) {
   .welcome { padding: 16px 14px 2px; }
   .my-issue { display: grid; }
@@ -185,7 +186,7 @@ function pwaHead(brand) {
 function shell({ title, body, session, admin, network, also, header, mainClass = "", bare = false }) {
   const brand = network ? networkById(network) : null;
   const mode = header || (brand ? "network" : admin ? "admin" : "plain");
-  const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
+  const adminLinks = admin ? `<a href="/admin">Applications</a><a href="/admin/issues">Flagged issues</a><a href="/admin/ideas">Ideas</a><a href="/admin/members">Members</a><a href="/admin/content">Content</a>` : "";
   const logout = session
     ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}"><button class="button secondary" type="submit">Log out</button></form>`
     : "";
@@ -336,6 +337,7 @@ function welcomeSection(network) {
 }
 
 const FLAG_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>`;
+const IDEA_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`;
 const INVITE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M4 19c.3-2.8 2.4-4.4 5-4.4s4.7 1.6 5 4.4"/><path d="M17 8v6M14 11h6"/></svg>`;
 const PHONE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><line x1="11" y1="18.5" x2="13" y2="18.5"/></svg>`;
 const SHARE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.15"/><circle cx="6" cy="12" r="2.15"/><circle cx="18" cy="19" r="2.15"/><path d="M8.05 10.85 15.7 6.4M8.05 13.15 15.7 17.6"/></svg>`;
@@ -462,6 +464,23 @@ function socialCard(network, points) {
       ${socialLinkRow("linkedin", brand.linkedin, "LinkedIn", summary.followedLinkedin, POINT_VALUES.linkedin)}
     </div>
   </article>`;
+}
+
+function ideaCard(network, session, draft = "") {
+  return `<section class="action-card idea-card" id="idea-card" aria-labelledby="idea-heading">
+    <div class="idea-copy">
+      <span class="action-icon">${IDEA_ICON}</span>
+      <h2 id="idea-heading">${escapeHtml(IDEA_COPY.headline)}</h2>
+      <p>${escapeHtml(IDEA_COPY.line)}</p>
+    </div>
+    <form class="idea-form" method="post" action="/hub/${escapeHtml(network)}/idea">
+      <input type="hidden" name="csrf" value="${escapeHtml(session?.csrf || "")}">
+      <label class="idea-field">
+        <textarea name="body" required maxlength="${IDEA_BODY_LIMIT}" placeholder="${escapeHtml(IDEA_COPY.placeholder)}" aria-label="${escapeHtml(IDEA_COPY.placeholder)}">${escapeHtml(draft)}</textarea>
+      </label>
+      <button class="button" type="submit">${escapeHtml(IDEA_COPY.button)}</button>
+    </form>
+  </section>`;
 }
 
 function pointsPanel(network, session, points) {
@@ -618,7 +637,7 @@ export function renderWelcome({ session, admin, network, also = [] }) {
   });
 }
 
-export function renderNetworkHub({ session, admin, network, top = [], resources = [], stories = [], posts, also = [], issues = [], flagged = false, profile = {}, referralCode = "", points = null }) {
+export function renderNetworkHub({ session, admin, network, top = [], resources = [], stories = [], posts, also = [], issues = [], flagged = false, idea = false, ideaMessage = "", ideaDraft = "", profile = {}, referralCode = "", points = null }) {
   const brand = networkById(network);
   const name = brand?.name || networkLabel(network);
   const source = Array.isArray(posts) ? posts : [...top, ...resources, ...stories];
@@ -653,6 +672,9 @@ export function renderNetworkHub({ session, admin, network, top = [], resources 
           ${socialCard(network, points)}
           ${actionButton({ title: ACTION_COPY.appTitle, body: ACTION_COPY.appBody, icon: PHONE_ICON, dialog: "install-dialog", extraClass: "install-card", earn: actionEarnText("install") })}
         </div>
+        ${idea ? notice(IDEA_COPY.thanks) : ""}
+        ${ideaMessage ? notice(ideaMessage) : ""}
+        ${ideaCard(network, session, ideaDraft)}
         ${pointsPanel(network, session, points)}
       </div>
       <div class="member-main">
@@ -1167,7 +1189,7 @@ export function renderMemberDelete({ session, member, message }) {
     mainClass: "member-view",
     body: `<p class="eyebrow">Member</p><h1>Delete member</h1>
       ${notice(message)}
-      <p>This removes ${escapeHtml(member.display_name)} (${escapeHtml(member.email)}) from the hub. The profile, network memberships, sign-in sessions, and flagged issues are deleted. Applications stay on file and are marked denied so they no longer grant membership.</p>
+      <p>This removes ${escapeHtml(member.display_name)} (${escapeHtml(member.email)}) from the hub. The profile, network memberships, sign-in sessions, flagged issues, and ideas are deleted. Applications stay on file and are marked denied so they no longer grant membership.</p>
       <p class="meta">Type the email address to confirm. This cannot be undone.</p>
       <form class="stack" method="post" action="/admin/members/${escapeHtml(member.id)}/delete">
         <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
@@ -1322,6 +1344,32 @@ export function renderFlagForm({ session, admin, network, also = [], draft = {},
         </fieldset>
         <button class="button" type="submit">Send</button>
       </form>`,
+  });
+}
+
+export function renderMemberIdeas({ session, rows, message = "" }) {
+  const bodyRows = rows.length
+    ? rows.map((row) => `<tr id="idea-${escapeHtml(row.id)}">
+        <td><span class="pill">${escapeHtml(networkLabel(row.network))}</span></td>
+        <td>${escapeHtml(row.display_name || "")}<div class="meta">${escapeHtml(row.email || "")}</div></td>
+        <td>${escapeHtml(formatWhen(row.created_at))} CT</td>
+        <td class="idea-text">${escapeHtml(row.body || "")}</td>
+        <td>${row.status === "read"
+          ? `<span class="pill">Read</span>`
+          : `<form method="post" action="/admin/ideas/${escapeHtml(row.id)}/read">
+              <input type="hidden" name="csrf" value="${escapeHtml(session.csrf)}">
+              <button class="button secondary" type="submit">Mark read</button>
+            </form>`}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5">No ideas yet.</td></tr>`;
+  return shell({
+    title: "Ideas · Walton County Business Leaders",
+    session,
+    admin: true,
+    body: `<p class="eyebrow">Admin</p><h1>Ideas</h1>
+      ${notice(message)}
+      <p class="lede">Ideas members sent from their network hub.</p>
+      <table class="hub-table"><thead><tr><th>Network</th><th>Member</th><th>Date</th><th>Idea</th><th>Status</th></tr></thead><tbody>${bodyRows}</tbody></table>`,
   });
 }
 

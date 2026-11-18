@@ -11,6 +11,7 @@ export function openHubDb(options = {}) {
     "0004_content_share_all.sql",
     "0005_login_events.sql",
     "0006_referrals_points.sql",
+    "0007_member_ideas.sql",
   ];
   for (const file of files) {
     db.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));

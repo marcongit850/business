@@ -8,6 +8,7 @@ import {
   renderFlagForm,
   renderFlaggedIssue,
   renderFlaggedIssues,
+  renderMemberIdeas,
   renderMemberDelete,
   renderMemberDetail,
   renderMemberEdit,
@@ -22,6 +23,14 @@ import {
   renderWelcome,
 } from "./hub-pages.js";
 import { scheduleApplicationThankYou } from "./application-email.js";
+import {
+  IDEA_EMAIL_LIMIT,
+  IDEA_IP_LIMIT,
+  buildIdeaNotice,
+  createMemberIdea,
+  listMemberIdeas,
+  markIdeaRead,
+} from "./ideas.js";
 import {
   FLAG_EMAIL_LIMIT,
   FLAG_IP_LIMIT,
@@ -574,6 +583,9 @@ async function adminRoutes(request, env, db, url, page, redirect) {
   const applicationMatch = path.match(/^\/admin\/applications\/([0-9a-f-]{36})(\/approve|\/deny|\/notes)?$/);
   if (applicationMatch) return applicationRoute(request, env, db, session, applicationMatch[1], applicationMatch[2] || "", page, redirect);
   if (path === "/admin/issues" && (request.method === "GET" || request.method === "HEAD")) return listFlagPage(db, session, page);
+  if (path === "/admin/ideas" && (request.method === "GET" || request.method === "HEAD")) return listIdeasPage(db, session, url, page);
+  const ideaAdminMatch = path.match(/^\/admin\/ideas\/([0-9a-f-]{36})\/read$/);
+  if (ideaAdminMatch) return markIdeaRoute(request, db, session, ideaAdminMatch[1], page, redirect);
   const issueMatch = path.match(/^\/admin\/issues\/([0-9a-f-]{36})(\/status|\/files\/([0-9a-f-]{36}))?$/);
   if (issueMatch) return issueAdminRoute(request, env, db, session, issueMatch[1], issueMatch[2] || "", issueMatch[3] || "", url, page, redirect);
   if (path === "/admin/members" && (request.method === "GET" || request.method === "HEAD")) return listMembers(db, session, page, url);
@@ -610,6 +622,32 @@ async function listApplications(env, db, url, session, page) {
   const notes = [];
   if (!String(env.MAILERLITE_API_KEY || "").trim()) notes.push("MailerLite not configured.");
   return page(renderApplications({ session, network, status, rows, mailerNote: notes.join(" ") }));
+}
+
+async function listIdeasPage(db, session, url, page) {
+  try {
+    const rows = await listMemberIdeas(db);
+    const message = url.searchParams.get("read") === "1" ? "Marked read." : "";
+    return page(renderMemberIdeas({ session, rows, message }));
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    return page(renderMessage({ title: "Ideas", message: "Ideas need the latest database migration before they can be listed.", session, admin: true }), 503);
+  }
+}
+
+async function markIdeaRoute(request, db, session, id, page, redirect) {
+  if (request.method !== "POST") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin: true }), 405);
+  const form = await request.formData();
+  if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin: true }), 403);
+  let result;
+  try {
+    result = await markIdeaRead(db, id);
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+    return page(renderMessage({ title: "Ideas", message: "Ideas need the latest database migration before they can be updated.", session, admin: true }), 503);
+  }
+  if (!result.ok) return page(renderMessage({ title: "Not found", message: result.error, session, admin: true }), 404);
+  return redirect("/admin/ideas?read=1");
 }
 
 async function listFlagPage(db, session, page) {
@@ -1075,7 +1113,7 @@ function removedMemberMessage(url) {
         : mailer === "not_configured"
           ? " MailerLite is not configured."
           : "";
-  return `Removed ${email}. Profile, memberships, sign-in sessions, and flagged issues were deleted. Applications were kept and marked denied so they no longer grant membership.${mailerLine}`;
+  return `Removed ${email}. Profile, memberships, sign-in sessions, flagged issues, and ideas were deleted. Applications were kept and marked denied so they no longer grant membership.${mailerLine}`;
 }
 
 async function loginStatsForEmail(db, email) {
@@ -1364,6 +1402,11 @@ async function removeMemberAccount(env, db, session, loaded) {
   try {
     await db.prepare("DELETE FROM points_events WHERE member_id = ?").bind(member.id).run();
     await db.prepare("DELETE FROM referral_codes WHERE member_id = ?").bind(member.id).run();
+  } catch (error) {
+    if (!missingTable(error)) throw error;
+  }
+  try {
+    await db.prepare("DELETE FROM member_ideas WHERE member_id = ?").bind(member.id).run();
   } catch (error) {
     if (!missingTable(error)) throw error;
   }
@@ -1695,9 +1738,15 @@ async function memberRoutes(request, env, db, url, page, redirect) {
   if (!memberships.includes(network)) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin }), 404);
   if (slug === "profile") return profileRoute(request, db, session, admin, url, page, redirect, network, also);
   if (slug === "flag") return flagRoute(request, env, db, session, admin, url, page, redirect, network, also);
+  if (slug === "idea") return ideaRoute(request, env, db, session, admin, page, redirect, network, also);
   if (request.method !== "GET" && request.method !== "HEAD") return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
   if (slug === "welcome") return page(renderWelcome({ session, admin, network, also }));
-  if (!slug) return networkHome(db, session, admin, network, page, also, url.searchParams.get("flagged") === "1");
+  if (!slug) {
+    return networkHome(db, session, admin, network, page, also, {
+      flagged: url.searchParams.get("flagged") === "1",
+      idea: url.searchParams.get("idea") === "1",
+    });
+  }
   let item = await db.prepare(`SELECT ${CONTENT_COLUMNS} FROM content_items WHERE network = ? AND slug = ? AND status = 'published'`).bind(network, slug).first();
   if (!item) {
     try {
@@ -1726,7 +1775,12 @@ async function listHubPosts(db, network) {
   }
 }
 
-async function networkHome(db, session, admin, network, page, also, flagged) {
+async function networkHome(db, session, admin, network, page, also, options = {}) {
+  const flagged = options === true || options.flagged === true;
+  const idea = options.idea === true;
+  const ideaMessage = options.ideaMessage || "";
+  const ideaDraft = options.ideaDraft || "";
+  const status = options.status || 200;
   const posts = await listHubPosts(db, network);
   const member = await db.prepare("SELECT id, name FROM members WHERE email = ?").bind(session.email).first();
   let issues = [];
@@ -1757,12 +1811,82 @@ async function networkHome(db, session, admin, network, page, also, flagged) {
     network,
     also,
     flagged,
+    idea,
+    ideaMessage,
+    ideaDraft,
     issues,
     posts,
     profile,
     referralCode,
     points,
-  }));
+  }), status);
+}
+
+async function ideaRoute(request, env, db, session, admin, page, redirect, network, also) {
+  const member = await db.prepare(`SELECT m.id, m.email,
+      COALESCE(NULLIF(p.name, ''), NULLIF(m.name, ''), m.email) AS display_name
+    FROM members m
+    LEFT JOIN member_profiles p ON p.member_id = m.id
+    WHERE m.email = ?`).bind(session.email).first();
+  if (!member) return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 404);
+  if (request.method === "POST") {
+    const form = await request.formData();
+    if (!(await csrfOk(session, form))) return page(renderMessage({ title: "Form expired", message: "The form expired. Reload the page and try again.", session, admin, network, also }), 403);
+    const body = String(form.get("body") || "");
+    const emailHit = await rateLimited(db, `idea-email:${session.email}`, IDEA_EMAIL_LIMIT);
+    const ipHit = await rateLimited(db, `idea-ip:${clientIp(request)}`, IDEA_IP_LIMIT);
+    if (emailHit || ipHit) {
+      return networkHome(db, session, admin, network, page, also, {
+        ideaMessage: "Please wait a bit and try again.",
+        ideaDraft: body,
+        status: 429,
+      });
+    }
+    let created;
+    try {
+      created = await createMemberIdea(db, {
+        memberId: member.id,
+        network,
+        body,
+        now: nowIso(),
+      });
+    } catch (error) {
+      if (missingTable(error)) {
+        return networkHome(db, session, admin, network, page, also, {
+          ideaMessage: "Ideas need the latest database migration before they can be saved.",
+          ideaDraft: body,
+          status: 503,
+        });
+      }
+      throw error;
+    }
+    if (!created.ok) {
+      return networkHome(db, session, admin, network, page, also, {
+        ideaMessage: created.error,
+        ideaDraft: body,
+        status: created.status || 400,
+      });
+    }
+    try {
+      const notice = buildIdeaNotice({
+        network,
+        memberEmail: member.email,
+        memberName: member.display_name,
+        idea: created.idea,
+        origin: publicOrigin(request),
+      });
+      if (notice && env.EMAIL && typeof env.EMAIL.send === "function") {
+        await env.EMAIL.send(new EmailMessage(notice.from, notice.to, notice.raw));
+      } else if (notice) {
+        console.error(JSON.stringify({ message: "email binding missing", action: "member-idea" }));
+      }
+    } catch (error) {
+      logError("member idea email failed", error);
+    }
+    return redirect(`/hub/${network}?idea=1`);
+  }
+  if (request.method === "GET" || request.method === "HEAD") return redirect(`/hub/${network}`);
+  return page(renderMessage({ title: "Not found", message: "That page is not available.", session, admin, network, also }), 405);
 }
 
 function issueDraft(form) {

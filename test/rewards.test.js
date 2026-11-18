@@ -199,7 +199,7 @@ test("each hub keeps four cards and uses that network's social links", () => {
       referralCode: ADA_CODE,
       points: emptyPoints(),
     });
-    const grid = html.slice(html.indexOf('class="action-grid"'), html.indexOf('class="points-panel"'));
+    const grid = html.slice(html.indexOf('class="action-grid"'), html.indexOf('class="action-card idea-card"'));
     assert.equal(grid.match(/class="action-card/g).length, 4, network);
     assert.match(grid, />Join us on social</);
     assert.equal(grid.includes("Join the Facebook group"), false, network);

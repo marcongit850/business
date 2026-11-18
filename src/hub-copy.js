@@ -15,6 +15,14 @@ export const ACTION_COPY = {
   flagLink: "Flag an issue",
 };
 
+export const IDEA_COPY = {
+  headline: "Advocacy is just the start.",
+  line: "As an early member, you can help steer this group's direction. Is there anything else you think we should become?",
+  placeholder: "Share your idea",
+  button: "Share your idea",
+  thanks: "Thanks, we read every idea.",
+};
+
 const BUSINESS_NOTE = "An organized voice. Constructive dialogue. A stronger Walton County.";
 const BUILDERS_NOTE = "An organized voice. Constructive dialogue. A stronger Walton County.";
 const TOURISM_NOTE = "An organized voice. Practical positions. A stronger Walton County.";

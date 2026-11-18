@@ -187,6 +187,42 @@ button.action-card {
 .follow-button:disabled { cursor: default; text-decoration: none; opacity: 0.72; }
 .follow-status { margin: 0; font-size: 13px; font-weight: 650; }
 .follow-status:empty { display: none; }
+.action-card.idea-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 14px;
+  min-height: 0;
+}
+.idea-copy { min-width: 0; }
+.idea-form { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.idea-field { display: block; margin: 0; }
+.idea-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 12px 14px;
+}
+.idea-form .button {
+  width: 100%;
+  box-sizing: border-box;
+  justify-self: stretch;
+  cursor: pointer;
+  font-family: inherit;
+  background: #d0a040;
+  color: #001840;
+  border: 1px solid #d0a040;
+  font-weight: 700;
+  padding: 12px 18px;
+}
+.actions-wrap > .notice { margin-top: 14px; }
 .points-panel {
   margin-top: 16px;
   background: #fff;
@@ -360,6 +396,15 @@ dialog.contact-dialog { position: fixed; }
   .action-grid { grid-template-columns: 1fr 1fr; gap: 22px; }
   .action-card { padding: 26px 26px 28px; }
   .action-card h2 { font-size: 19px; }
+  .action-card.idea-card {
+    grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+    gap: 32px;
+    align-items: center;
+    margin-top: 22px;
+  }
+  .idea-form textarea { min-height: 120px; }
+  .idea-form .button { width: auto; justify-self: start; }
+  .actions-wrap > .notice { margin-top: 22px; }
   .member-main { padding: 56px 0 88px; }
   .hub-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 56px; }
   .member-main .section-heading h2 { font-size: 44px; }
