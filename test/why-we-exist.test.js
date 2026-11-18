@@ -20,7 +20,7 @@ const { default: worker } = await import("../src/index.js");
 
 const source = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 const CSP =
-  "default-src 'none'; script-src 'self' 'unsafe-inline' https://*.googletagmanager.com https://*.google-analytics.com https://connect.facebook.net; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://www.facebook.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.facebook.com https://connect.facebook.net; form-action 'self'; base-uri 'none'";
+  "default-src 'none'; script-src 'self' 'unsafe-inline' https://*.googletagmanager.com https://*.google-analytics.com https://connect.facebook.net; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://www.facebook.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.facebook.com https://connect.facebook.net; manifest-src 'self'; worker-src 'self'; form-action 'self'; base-uri 'none'";
 
 function extract(name) {
   const marker = `const ${name} = `;

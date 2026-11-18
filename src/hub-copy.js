@@ -10,6 +10,8 @@ export const ACTION_COPY = {
   inviteBody: "Know someone who belongs here? Send them our join page.",
   facebookTitle: "Join the Facebook group",
   facebookBody: "Join the conversation with other members.",
+  appTitle: "Get the app",
+  appBody: "Add the member hub to your home screen for one-tap access.",
   flagLink: "Flag an issue",
 };
 

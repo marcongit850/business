@@ -3,6 +3,7 @@ import { handleHub, recordBusinessApplication } from "./hub.js";
 import { renderLogin } from "./hub-pages.js";
 import { hubHero } from "./hub-hero.js";
 import { networkLogo } from "./network-logos.js";
+import { pwaAsset } from "./pwa.js";
 import { loginNetworkFromUrl } from "./networks.js";
 import { safeReturnPath } from "./text.js";
 import { renderWhyWeExistPage } from "./why-we-exist.js";
@@ -55,7 +56,7 @@ const HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
-  "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline' https://*.googletagmanager.com https://*.google-analytics.com https://connect.facebook.net; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://www.facebook.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.facebook.com https://connect.facebook.net; form-action 'self'; base-uri 'none'",
+  "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline' https://*.googletagmanager.com https://*.google-analytics.com https://connect.facebook.net; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://www.facebook.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.facebook.com https://connect.facebook.net; manifest-src 'self'; worker-src 'self'; form-action 'self'; base-uri 'none'",
 };
 
 function pageHeaders(type) {
@@ -118,6 +119,13 @@ export default {
       if (redirect) return Response.redirect(target.toString(), 301);
     }
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
+
+    const pwa = pwaAsset(path);
+    if (pwa && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(request.method === "HEAD" ? null : pwa.body, {
+        headers: { ...HEADERS, "Content-Type": pwa.type, "Cache-Control": pwa.cache },
+      });
+    }
 
     const hubResponse = await handleHub(request, env, { html, text }, ctx);
     if (hubResponse) return hubResponse;
