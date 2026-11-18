@@ -32,6 +32,7 @@ const LATER = "2026-11-16T18:30:00.000Z";
 const ADA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const BEA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MARC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const NED = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const APP = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const ADMIN_TOKEN = "admin-session-token-admin-session-token-123456";
 const MEMBER_TOKEN = "member-session-token-member-session-token-1234";
@@ -292,6 +293,105 @@ test("sign-in still works when login_events is not created yet", async () => {
     const detailHtml = await detail.text();
     assert.match(detailHtml, /Logins: 0/);
     assert.match(detailHtml, /Last login: Never/);
+  } finally {
+    db.close();
+  }
+});
+
+test("the members list filters to an approved network and keeps the sort", async () => {
+  const db = openHubDb();
+  const env = envFor(db);
+  await member(db, ADA, "ada@example.com", "Ada Example");
+  await member(db, BEA, "bea@example.com", "Bea Quiet");
+  await member(db, MARC, "marc@whpinc.com", "Marc");
+  await member(db, NED, "ned@example.com", "Ned Pending");
+  await approve(db, ADA, "business");
+  await approve(db, ADA, "builders");
+  await approve(db, BEA, "tourism");
+  await approve(db, MARC, "business");
+  await db.prepare("INSERT INTO memberships (member_id, network, role, status, created_at, updated_at) VALUES (?, 'tourism', 'member', 'pending', ?, ?)").bind(MARC, NOW, NOW).run();
+  await db.prepare("INSERT INTO memberships (member_id, network, role, status, created_at, updated_at) VALUES (?, 'business', 'member', 'pending', ?, ?)").bind(NED, NOW, NOW).run();
+  await db.prepare("INSERT INTO memberships (member_id, network, role, status, created_at, updated_at) VALUES (?, 'builders', 'member', 'denied', ?, ?)").bind(NED, NOW, NOW).run();
+  await event(db, "evt-ada-1", "ada@example.com", "business", EARLIER);
+  await event(db, "evt-ada-2", "Ada@Example.com", "builders", NOW);
+  await event(db, "evt-marc", "marc@whpinc.com", "business", LATER);
+  await session(db, "sess-admin", ADMIN_TOKEN, "marc@whpinc.com", "admin-csrf");
+  try {
+    const all = await call(env, "/admin/members", { token: ADMIN_TOKEN });
+    const allHtml = await all.text();
+    assert.match(allHtml, /<form class="filters" method="get" action="\/admin\/members">/);
+    assert.match(allHtml, /<option value="" selected>All networks<\/option>/);
+    assert.match(allHtml, /<option value="business">Business Leaders<\/option>/);
+    assert.match(allHtml, /<option value="builders">Builders<\/option>/);
+    assert.match(allHtml, /<option value="tourism">Tourism<\/option>/);
+    assert.match(allHtml, /<button class="button" type="submit">Filter<\/button>/);
+    assert.equal(allHtml.includes('name="sort"'), false);
+    assert.match(allHtml, />3 members</);
+    assert.deepEqual(memberIds(allHtml), [ADA, BEA, MARC]);
+    assert.equal(allHtml.includes(NED), false);
+    assert.equal(/[—–]/.test(allHtml), false);
+
+    const business = await call(env, "/admin/members?network=business", { token: ADMIN_TOKEN });
+    const businessHtml = await business.text();
+    assert.match(businessHtml, /<option value="business" selected>Business Leaders<\/option>/);
+    assert.match(businessHtml, />2 members</);
+    assert.deepEqual(memberIds(businessHtml), [ADA, MARC]);
+    assert.match(memberRow(businessHtml, ADA), /Business Leaders/);
+    assert.match(memberRow(businessHtml, ADA), /Builders/);
+    assert.equal(memberRow(businessHtml, MARC).includes("Tourism"), false);
+    assert.match(businessHtml, /href="\/admin\/members\?network=business" aria-current="true">Member</);
+    assert.match(businessHtml, /href="\/admin\/members\?network=business&amp;sort=logins">Logins</);
+    assert.match(businessHtml, /href="\/admin\/members\?network=business&amp;sort=last">Last login</);
+    assert.equal(businessHtml.includes("No approved members yet."), false);
+    assert.equal(businessHtml.includes("No approved members in this network."), false);
+
+    const builders = await call(env, "/admin/members?network=builders&sort=name", { token: ADMIN_TOKEN });
+    const buildersHtml = await builders.text();
+    assert.match(buildersHtml, />1 member</);
+    assert.deepEqual(memberIds(buildersHtml), [ADA]);
+    assert.equal(buildersHtml.includes('name="sort"'), false);
+
+    const tourism = await call(env, "/admin/members?network=tourism", { token: ADMIN_TOKEN });
+    const tourismHtml = await tourism.text();
+    assert.match(tourismHtml, />1 member</);
+    assert.deepEqual(memberIds(tourismHtml), [BEA]);
+
+    const byLogins = await call(env, "/admin/members?network=business&sort=logins", { token: ADMIN_TOKEN });
+    const loginsHtml = await byLogins.text();
+    assert.deepEqual(memberIds(loginsHtml), [ADA, MARC]);
+    assert.match(loginsHtml, /href="\/admin\/members\?network=business">Member</);
+    assert.match(loginsHtml, /href="\/admin\/members\?network=business&amp;sort=logins" aria-current="true">Logins</);
+    assert.match(loginsHtml, /href="\/admin\/members\?network=business&amp;sort=last">Last login</);
+    assert.match(loginsHtml, /<input type="hidden" name="sort" value="logins">/);
+
+    const byLast = await call(env, "/admin/members?sort=last&network=tourism", { token: ADMIN_TOKEN });
+    const lastHtml = await byLast.text();
+    assert.deepEqual(memberIds(lastHtml), [BEA]);
+    assert.match(lastHtml, /href="\/admin\/members\?network=tourism&amp;sort=last" aria-current="true">Last login</);
+    assert.match(lastHtml, /<input type="hidden" name="sort" value="last">/);
+
+    const invalid = await call(env, "/admin/members?network=staff&sort=logins", { token: ADMIN_TOKEN });
+    const invalidHtml = await invalid.text();
+    assert.match(invalidHtml, /<option value="" selected>All networks<\/option>/);
+    assert.match(invalidHtml, />3 members</);
+    assert.deepEqual(memberIds(invalidHtml), [ADA, MARC, BEA]);
+    assert.equal(invalidHtml.includes("network=staff"), false);
+    assert.match(invalidHtml, /href="\/admin\/members\?sort=logins" aria-current="true">Logins</);
+
+    const removed = await call(env, "/admin/members?network=tourism&removed=ada@example.com&mailer=removed", { token: ADMIN_TOKEN });
+    const removedHtml = await removed.text();
+    assert.match(removedHtml, /Removed ada@example.com\. Profile, memberships, sign-in sessions, flagged issues, and ideas were deleted\. Applications were kept and marked denied so they no longer grant membership\. MailerLite groups were updated\./);
+    assert.deepEqual(memberIds(removedHtml), [BEA]);
+    assert.match(removedHtml, />1 member</);
+
+    await db.prepare("DELETE FROM memberships WHERE member_id = ? AND network = 'tourism'").bind(BEA).run();
+    const empty = await call(env, "/admin/members?network=tourism&sort=last", { token: ADMIN_TOKEN });
+    const emptyHtml = await empty.text();
+    assert.match(emptyHtml, /No approved members in this network\./);
+    assert.match(emptyHtml, />0 members</);
+    assert.equal(emptyHtml.includes("No approved members yet."), false);
+    assert.deepEqual(memberIds(emptyHtml), []);
+    assert.equal(/[—–]/.test(businessHtml + tourismHtml + loginsHtml + removedHtml + emptyHtml), false);
   } finally {
     db.close();
   }
