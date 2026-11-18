@@ -576,7 +576,7 @@ test("sign-in mail goes to the member from hello@waltonleaders.org", () => {
 });
 
 test("site copy in the hub does not use em or en dashes", () => {
-  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../src/hub-share.js", "../src/hub-home-script.js", "../src/pwa.js", "../src/application-email.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
+  for (const file of ["../src/hub-pages.js", "../src/hub.js", "../src/hub-share.js", "../src/hub-home-script.js", "../src/points.js", "../src/pwa.js", "../src/application-email.js", "../docs/welcome-emails.md", "../docs/member-hub.md"]) {
     const text = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.equal(/[—–]/.test(text), false, file);
   }

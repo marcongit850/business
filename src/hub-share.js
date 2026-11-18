@@ -1,4 +1,5 @@
 import { networkById } from "./networks.js";
+import { referralJoinUrl } from "./points.js";
 
 const INVITE_FOCUS = {
   business: "local business",
@@ -6,14 +7,15 @@ const INVITE_FOCUS = {
   tourism: "our tourism industry",
 };
 
-export function inviteShare(network) {
+export function inviteShare(network, code = "") {
   const brand = networkById(network);
   const focus = INVITE_FOCUS[network];
   if (!brand || !focus) return null;
-  const message = `I joined the ${brand.name}, a free group that advocates for ${focus}. Join here: ${brand.join}`;
+  const url = referralJoinUrl(brand.join, code);
+  const message = `I joined the ${brand.name}, a free group that advocates for ${focus}. Join here: ${url}`;
   return {
     name: brand.name,
-    url: brand.join,
+    url,
     subject: `Join me in the ${brand.name}`,
     message,
   };

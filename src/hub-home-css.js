@@ -136,6 +136,51 @@ button.action-card {
   margin: 0 0 8px;
 }
 .action-card p { font-size: 15px; line-height: 1.5; margin: 0; }
+.social-icons { width: auto; min-width: 40px; padding: 0 8px; gap: 6px; }
+.social-icons svg { width: 16px; height: 16px; }
+.social-actions { display: grid; gap: 8px; margin-top: 14px; }
+.social-actions .button {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.social-follow { display: grid; gap: 6px; margin-top: 12px; }
+.follow-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--navy);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.follow-button:disabled { cursor: default; text-decoration: none; opacity: 0.72; }
+.follow-status { min-height: 1.2em; margin: 2px 0 0; font-size: 13px; font-weight: 650; }
+.points-panel {
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--gold);
+  padding: 16px 18px 18px;
+}
+.points-panel h2 {
+  font-family: Source, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 0 0 6px;
+}
+.points-panel p { margin: 0; font-size: 14px; line-height: 1.5; }
+.points-panel p + p { margin-top: 6px; }
 .member-main { padding: 40px 0 64px; }
 .hub-layout { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: start; }
 .member-main .section-heading { display: block; margin-bottom: 8px; }
