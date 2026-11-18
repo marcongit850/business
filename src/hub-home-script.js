@@ -34,10 +34,7 @@ export const HUB_HOME_SCRIPT = `(function () {
     var total = pointsRoot.querySelector("[data-points-total]");
     if (total && data.total != null) total.textContent = String(data.total);
     var line = pointsRoot.querySelector("[data-points-breakdown]");
-    var breakdown = data.breakdown;
-    if (line && breakdown) {
-      line.textContent = "Welcome bonus " + (breakdown.welcome || 0) + ". Referrals " + (breakdown.referral || 0) + ". App install " + (breakdown.install || 0) + ". Facebook " + (breakdown.facebook || 0) + ". LinkedIn " + (breakdown.linkedin || 0) + ".";
-    }
+    if (line && typeof data.breakdownText === "string") line.textContent = data.breakdownText;
     if (data.awarded && data.breakdown && data.breakdown.install) pointsRoot.setAttribute("data-installed", "1");
   }
   var installCard = document.querySelector(".install-card");
@@ -62,10 +59,12 @@ export const HUB_HOME_SCRIPT = `(function () {
       follow.disabled = true;
       postPoints(kind).then(function (data) {
         paintPoints(data);
-        var status = document.querySelector("[data-follow-status]");
+        var row = follow.closest(".social-row");
+        var status = row ? row.querySelector("[data-follow-status]") : null;
         if (data && (data.awarded || data.already)) {
           follow.textContent = kind === "linkedin" ? "Followed on LinkedIn" : "Followed on Facebook";
-          if (status) status.textContent = data.awarded ? "2 points added." : "Already recorded.";
+          var amount = follow.getAttribute("data-points") || "";
+          if (status) status.textContent = data.awarded ? amount + " points added." : "Already recorded.";
         } else {
           follow.disabled = false;
         }

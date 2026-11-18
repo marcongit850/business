@@ -34,7 +34,7 @@ import {
   updateIssueStatus,
 } from "./issues.js";
 import { approvalSummary, loginNetworkFromUrl, networkById, networkId } from "./networks.js";
-import { CLAIMABLE_POINTS, emptyPoints, normalizeReferralCode, POINT_VALUES, randomReferralCode, summarizePoints } from "./points.js";
+import { CLAIMABLE_POINTS, emptyPoints, normalizeReferralCode, POINT_VALUES, pointsBreakdown, randomReferralCode, summarizePoints } from "./points.js";
 import { emptyProfile, fillProfileFromApplications, profileHasBlank } from "./profile-prefill.js";
 import { applicationNoteText, buildSignInEmail, isEmail, loginPath, mergeAdminNotes, safeReturnPath, signInDestination, verifyLinkPath } from "./text.js";
 import {
@@ -880,6 +880,7 @@ async function claimPoints(request, db, json) {
     awarded: Boolean(result.awarded),
     already: Boolean(result.already),
     total: summary.total,
+    breakdownText: pointsBreakdown(summary),
     breakdown: {
       welcome: summary.welcome,
       referral: summary.referral,

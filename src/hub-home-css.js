@@ -136,20 +136,41 @@ button.action-card {
   margin: 0 0 8px;
 }
 .action-card p { font-size: 15px; line-height: 1.5; margin: 0; }
-.social-icons { width: auto; min-width: 40px; padding: 0 8px; gap: 6px; }
-.social-icons svg { width: 16px; height: 16px; }
-.social-actions { display: grid; gap: 8px; margin-top: 14px; }
+.points-earn {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--gold-dark);
+}
+.social-actions { display: grid; gap: 8px; margin-top: 10px; }
+.social-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+.social-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
 .social-actions .button {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  max-width: 100%;
   box-sizing: border-box;
   text-align: center;
   text-decoration: none;
-  padding: 8px 10px;
+  padding: 8px 12px;
   font-size: 14px;
   line-height: 1.2;
 }
-.social-follow { display: grid; gap: 6px; margin-top: 12px; }
+.social-row .follow-button { min-width: 0; }
 .follow-button {
   background: none;
   border: none;
@@ -164,7 +185,8 @@ button.action-card {
   cursor: pointer;
 }
 .follow-button:disabled { cursor: default; text-decoration: none; opacity: 0.72; }
-.follow-status { min-height: 1.2em; margin: 2px 0 0; font-size: 13px; font-weight: 650; }
+.follow-status { margin: 0; font-size: 13px; font-weight: 650; }
+.follow-status:empty { display: none; }
 .points-panel {
   margin-top: 16px;
   background: #fff;
