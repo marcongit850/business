@@ -157,10 +157,10 @@ test("each hub shows the same idea card between the action row and the points pa
     assert.equal(/[—–]/.test(card), false, network);
     if (network === "business") {
       const nav = html.slice(html.indexOf("<nav"), html.indexOf("</nav>"));
-      const flagged = nav.indexOf('href="/admin/issues"');
-      const ideas = nav.indexOf('href="/admin/ideas">Ideas');
-      const members = nav.indexOf('href="/admin/members"');
-      assert.ok(flagged !== -1 && flagged < ideas && ideas < members);
+      assert.match(nav, /<a class="admin-link" href="\/admin">Admin<\/a>/);
+      assert.equal((nav.match(/href="\/admin/g) || []).length, 1);
+      assert.equal(nav.includes('href="/admin/ideas"'), false);
+      assert.equal(nav.includes('href="/admin/issues"'), false);
     }
   }
 });
