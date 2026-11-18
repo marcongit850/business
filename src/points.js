@@ -13,7 +13,24 @@ export const POINT_VALUES = {
 
 export const CLAIMABLE_POINTS = ["install", "facebook", "linkedin"];
 
-export const POINTS_EARN = "How to earn more: 10 points when someone you invite is approved, 5 points once for installing the app, and 2 points each for following on Facebook and on LinkedIn. Follows count once on each network.";
+function followEarnPhrase() {
+  if (POINT_VALUES.facebook === POINT_VALUES.linkedin) {
+    return `+${POINT_VALUES.facebook} points each for Facebook and LinkedIn`;
+  }
+  return `+${POINT_VALUES.facebook} points for Facebook and +${POINT_VALUES.linkedin} points for LinkedIn`;
+}
+
+export const POINTS_EARN = `Ways to earn: welcome bonus +${POINT_VALUES.welcome}, +${POINT_VALUES.referral} points for each invite who is approved, +${POINT_VALUES.install} points for installing the app, and ${followEarnPhrase()}. Follows count once on each network.`;
+
+export function actionEarnText(kind) {
+  if (kind === "referral") return `+${POINT_VALUES.referral} points for each invite who is approved`;
+  if (kind === "install") return `+${POINT_VALUES.install} points`;
+  if (kind === "social") {
+    if (POINT_VALUES.facebook === POINT_VALUES.linkedin) return `+${POINT_VALUES.facebook} points each`;
+    return `+${POINT_VALUES.facebook} points for Facebook, +${POINT_VALUES.linkedin} points for LinkedIn`;
+  }
+  return "";
+}
 
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const CODE_LENGTH = 8;
@@ -74,7 +91,12 @@ export function summarizePoints(rows, network = "") {
   return summary;
 }
 
+function shownPoints(value) {
+  const amount = Number(value) || 0;
+  return amount > 0 ? `+${amount}` : "0";
+}
+
 export function pointsBreakdown(summary) {
   const value = summary || emptyPoints();
-  return `Welcome bonus ${value.welcome || 0}. Referrals ${value.referral || 0}. App install ${value.install || 0}. Facebook ${value.facebook || 0}. LinkedIn ${value.linkedin || 0}.`;
+  return `Welcome bonus ${shownPoints(value.welcome)}. Referrals ${shownPoints(value.referral)}. App install ${shownPoints(value.install)}. Facebook ${shownPoints(value.facebook)}. LinkedIn ${shownPoints(value.linkedin)}.`;
 }

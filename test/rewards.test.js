@@ -178,7 +178,7 @@ test("referral codes and point totals stay personal", () => {
   assert.equal(summary.followedFacebook, true);
   assert.equal(summary.followedLinkedin, false);
   assert.equal(summary.installed, true);
-  assert.match(pointsBreakdown(summary), /^Welcome bonus 10\. Referrals 10\. App install 5\. Facebook 4\. LinkedIn 2\.$/);
+  assert.equal(pointsBreakdown(summary), "Welcome bonus +10. Referrals +10. App install +5. Facebook +4. LinkedIn +2.");
   assert.equal(pointsBreakdown(emptyPoints()), "Welcome bonus 0. Referrals 0. App install 0. Facebook 0. LinkedIn 0.");
   assert.equal(POINT_VALUES.welcome, 10);
   assert.equal(/[—–]/.test(pointsBreakdown(summary) + share.message), false);
@@ -209,13 +209,35 @@ test("each hub keeps four cards and uses that network's social links", () => {
     assert.match(grid, /data-follow="linkedin"/);
     assert.match(grid, />I followed on Facebook</);
     assert.match(grid, />I followed on LinkedIn</);
+    assert.equal(grid.includes("social-icons"), false, network);
+    assert.equal(grid.includes("M14 13.5h2.75"), false, network);
+    assert.match(grid, /<circle cx="18" cy="5" r="2.15"/);
+    const rows = [...grid.matchAll(/<div class="social-row">([\s\S]*?)<\/div>/g)].map((match) => match[1]);
+    assert.equal(rows.length, 2, network);
+    assert.match(rows[0], new RegExp(`href="${NETWORKS[network].facebook.replace(/[.]/g, "\\.")}"[\\s\\S]*>Facebook</a>`));
+    assert.match(rows[0], /data-follow="facebook"/);
+    assert.match(rows[0], new RegExp(`data-points="${POINT_VALUES.facebook}"`));
+    assert.match(rows[0], />I followed on Facebook</);
+    assert.ok(rows[0].indexOf(">Facebook</a>") < rows[0].indexOf("data-follow=\"facebook\""), network);
+    assert.match(rows[1], new RegExp(`href="${NETWORKS[network].linkedin.replace(/[.]/g, "\\.")}"[\\s\\S]*>LinkedIn</a>`));
+    assert.match(rows[1], /data-follow="linkedin"/);
+    assert.match(rows[1], new RegExp(`data-points="${POINT_VALUES.linkedin}"`));
+    assert.match(rows[1], />I followed on LinkedIn</);
+    assert.ok(rows[1].indexOf(">LinkedIn</a>") < rows[1].indexOf("data-follow=\"linkedin\""), network);
+    assert.match(grid, new RegExp(`\\+${POINT_VALUES.referral} points for each invite who is approved`));
+    assert.match(grid, new RegExp(`\\+${POINT_VALUES.install} points</p>`));
+    assert.match(grid, new RegExp(`\\+${POINT_VALUES.facebook} points each`));
+    const flag = grid.slice(grid.indexOf('class="action-card primary"'), grid.indexOf("</a>"));
+    assert.equal(flag.includes("points-earn"), false, network);
+    assert.equal(flag.includes("points"), false, network);
     const invite = html.slice(html.indexOf('id="invite-dialog"'));
     const personal = `${NETWORKS[network].join}?ref=${ADA_CODE}`;
     assert.ok(invite.includes(personal), network);
     assert.ok(invite.includes(encodeURIComponent(personal)), network);
     assert.match(html, /Your points:/);
     assert.match(html, /Welcome bonus /);
-    assert.match(html, /How to earn more:/);
+    assert.match(html, /Ways to earn:/);
+    assert.match(html, new RegExp(`welcome bonus \\+${POINT_VALUES.welcome}`));
     assert.equal(html.includes("leaderboard"), false, network);
     assert.equal(/[—–]/.test(html), false, network);
   }
@@ -228,7 +250,8 @@ test("each hub keeps four cards and uses that network's social links", () => {
   assert.match(tourism, /data-installed="0"/);
   assert.match(tourism, /Followed on Facebook/);
   assert.match(tourism, /I followed on LinkedIn/);
-  assert.match(tourism, /Welcome bonus 10\. Referrals 0\. App install 0\. Facebook 2\. LinkedIn 0\./);
+  assert.match(tourism, /Welcome bonus \+10\. Referrals 0\. App install 0\. Facebook \+2\. LinkedIn 0\./);
+  assert.match(tourism, /data-follow="facebook"[^>]*disabled/);
 });
 
 test("the migration dedupes points and backfills the welcome bonus", () => {
@@ -381,13 +404,13 @@ test("welcome points are awarded once, referrals once per person, and follows on
     const memberPage = await call(env, `/admin/members/${ADA}`, { token: ADMIN_TOKEN });
     const memberHtml = await memberPage.text();
     assert.match(memberHtml, /Points: 20/);
-    assert.match(memberHtml, /Welcome bonus 10\. Referrals 10\. App install 0\. Facebook 0\. LinkedIn 0\./);
+    assert.match(memberHtml, /Welcome bonus \+10\. Referrals \+10\. App install 0\. Facebook 0\. LinkedIn 0\./);
 
     const hub = await call(env, "/hub/business", { token: ADA_TOKEN });
     assert.equal(hub.status, 200);
     const hubHtml = await hub.text();
     assert.match(hubHtml, /Your points: <span data-points-total>20<\/span>/);
-    assert.match(hubHtml, /Welcome bonus 10/);
+    assert.match(hubHtml, /Welcome bonus \+10/);
     assert.equal(hubHtml.includes("bea@example.com"), false);
     assert.equal(hubHtml.includes("leaderboard"), false);
     const personal = hubHtml.match(/https:\/\/waltonleaders\.org\/join\?ref=([abcdefghjkmnpqrstuvwxyz23456789]{8})/);
@@ -407,6 +430,8 @@ test("welcome points are awarded once, referrals once per person, and follows on
     assert.equal(installBody.awarded, true);
     assert.equal(installBody.breakdown.install, 5);
     assert.equal(installBody.total, 25);
+    assert.match(installBody.breakdownText, /Welcome bonus \+10\./);
+    assert.match(installBody.breakdownText, /App install \+5\./);
     const installAgain = await (await claim("install", "builders")).json();
     assert.equal(installAgain.awarded, false);
     assert.equal(installAgain.already, true);
